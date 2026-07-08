@@ -1,0 +1,23 @@
+{
+  "name": "cohortex-studio-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express API for Cohortex Studio — CRUD for agents/crews, run orchestration via the Cohortex FastAPI sidecar, MongoDB persistence.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "jest --runInBand"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "mongoose": "^8.9.5"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^10.1.4",
+    "supertest": "^7.0.0"
+  }
+}
