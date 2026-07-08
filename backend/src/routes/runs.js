@@ -103,7 +103,7 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
   }
 
   if (!run.sidecarRunId) {
-    send("error", { message: "run has no sidecar id" });
+    send("failed", { message: "run has no sidecar id" });
     return res.end();
   }
 
@@ -116,14 +116,14 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
     try {
       ev = await sidecar.getEvents(run.sidecarRunId, since);
     } catch (e) {
-      send("error", { message: String(e.message || e) });
+      send("failed", { message: String(e.message || e) });
       break;
     }
     for (const e of ev.events) {
       since = Math.max(since, e.seq);
       if (e.type === "step") send("step", e);
       else if (e.type === "done") send("done", { output: e.output });
-      else if (e.type === "error") send("error", { message: e.message });
+      else if (e.type === "error") send("failed", { message: e.message });
     }
     if (ev.status === "done" || ev.status === "error") {
       try {

@@ -1,0 +1,117 @@
+/* Cohortex Studio — cyberpunk-neon theme (matches the wordmark banners across the repos). */
+:root {
+  --bg: #0b0714;
+  --bg-2: #12071f;
+  --panel: #160a26;
+  --border: #2a1b40;
+  --cyan: #00f5ff;
+  --magenta: #ff00cc;
+  --violet: #8a5cff;
+  --green: #39ff14;
+  --text: #e6e2f0;
+  --dim: #8a83a6;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; height: 100%; }
+
+body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(138, 92, 255, 0.12), transparent),
+    var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', ui-monospace, 'Courier New', monospace;
+  font-size: 14px;
+}
+
+a { color: var(--cyan); text-decoration: none; }
+
+/* ── Top bar ─────────────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; gap: 24px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(0, 245, 255, 0.04), transparent);
+}
+.brand {
+  font-weight: 700; font-size: 20px; letter-spacing: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--violet), var(--magenta));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.brand span { opacity: 0.55; }
+.topbar nav { display: flex; gap: 6px; }
+.topbar nav a {
+  padding: 6px 14px; border: 1px solid transparent; border-radius: 4px;
+  color: var(--dim); letter-spacing: 1px; text-transform: uppercase; font-size: 12px;
+}
+.topbar nav a:hover { color: var(--cyan); }
+.topbar nav a.active {
+  color: var(--cyan); border-color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 245, 255, 0.25);
+}
+.topbar .tag { margin-left: auto; color: var(--dim); font-size: 12px; }
+
+.wrap { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
+
+/* ── Cards / panels ──────────────────────────────────────── */
+.card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 18px; margin-bottom: 18px;
+}
+h2 { margin: 0 0 14px; color: var(--cyan); letter-spacing: 1px; font-size: 15px; text-transform: uppercase; }
+h3 { margin: 0 0 10px; color: var(--violet); font-size: 13px; letter-spacing: 1px; }
+.muted { color: var(--dim); }
+.err { color: var(--magenta); margin: 8px 0; }
+
+/* ── Forms ───────────────────────────────────────────────── */
+label { display: block; color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin: 10px 0 4px; }
+input, select, textarea {
+  width: 100%; padding: 9px 11px;
+  background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+  font-family: inherit; font-size: 13px;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 8px rgba(0, 245, 255, 0.2); }
+textarea { resize: vertical; min-height: 64px; }
+.row { display: flex; gap: 14px; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 140px; }
+
+/* ── Buttons ─────────────────────────────────────────────── */
+button {
+  font-family: inherit; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+  padding: 9px 16px; border-radius: 5px; cursor: pointer;
+  background: transparent; color: var(--cyan); border: 1px solid var(--cyan);
+}
+button:hover { box-shadow: 0 0 12px rgba(0, 245, 255, 0.3); }
+button.primary { background: var(--cyan); color: var(--bg); border-color: var(--cyan); font-weight: 700; }
+button.danger { color: var(--magenta); border-color: var(--magenta); }
+button.ghost { color: var(--dim); border-color: var(--border); }
+button:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* ── Tables / lists ──────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); font-size: 13px; }
+th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px;
+  border: 1px solid var(--border); color: var(--dim);
+}
+.badge.cyan { color: var(--cyan); border-color: var(--cyan); }
+.badge.magenta { color: var(--magenta); border-color: var(--magenta); }
+.badge.green { color: var(--green); border-color: var(--green); }
+.badge.violet { color: var(--violet); border-color: var(--violet); }
+
+/* ── Run stream steps ────────────────────────────────────── */
+.step {
+  border-left: 2px solid var(--violet); padding: 8px 12px; margin: 8px 0;
+  background: var(--bg-2); border-radius: 0 6px 6px 0;
+}
+.step .who { color: var(--green); font-weight: 700; }
+.final { border-left-color: var(--cyan); }
+
+.checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.checks label { display: inline-flex; align-items: center; gap: 6px; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 13px; }
+.checks input[type='checkbox'] { width: auto; }
