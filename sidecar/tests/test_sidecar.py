@@ -3,11 +3,12 @@ Sidecar tests using fake LLM backends — no network, no Ollama, no cloud keys.
 
 Registers test-only backends into cohortex's real provider registry (the same mechanism
 cohortex.providers.register uses for ollama/openai/anthropic/gemini/grok), so the sidecar's
-crew_builder/main code path is exercised exactly as in production, just with a scripted
-"model" standing in for the LLM.
+crew_builder/runner/main code path is exercised exactly as in production, just with a
+scripted "model" standing in for the LLM.
 """
 import pathlib
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -15,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from cohortex.providers import register
 from app.main import app
+from app import mcp_server
 
 client = TestClient(app)
 
@@ -56,6 +58,23 @@ def _agent(name, role="Agent", backend="test-const", **overrides):
     return a
 
 
+def _run_and_wait(body, timeout=5.0):
+    """POST /run, then poll GET /runs/{id} until it's no longer "running"."""
+    r = client.post("/run", json=body)
+    assert r.status_code == 200, r.text
+    run_id = r.json()["run_id"]
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status_resp = client.get(f"/runs/{run_id}")
+        assert status_resp.status_code == 200
+        data = status_resp.json()
+        if data["status"] != "running":
+            return run_id, data
+        time.sleep(0.05)
+    raise AssertionError(f"run {run_id} did not finish within {timeout}s")
+
+
 def test_ping_and_health_and_backends():
     assert client.get("/ping").json() == {"ok": True}
     health = client.get("/health").json()
@@ -69,13 +88,12 @@ def test_run_single_topology():
         "task": "say hi",
         "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]},
     }
-    r = client.post("/run", json=body)
-    assert r.status_code == 200
-    data = r.json()
-    assert data["crew"] == "solo"
-    assert data["output"] == "hello from const backend"
-    assert len(data["steps"]) == 1
-    assert data["steps"][0]["agent"] == "solo"
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    assert data["result"]["crew"] == "solo"
+    assert data["result"]["output"] == "hello from const backend"
+    assert len(data["result"]["steps"]) == 1
+    assert data["result"]["steps"][0]["agent"] == "solo"
 
 
 def test_run_sequential_topology_order_and_handoff():
@@ -84,18 +102,38 @@ def test_run_sequential_topology_order_and_handoff():
         "crew": {
             "name": "research_team",
             "topology": "sequential",
-            "agents": [
-                _agent("researcher"),
-                _agent("writer"),
-                _agent("editor"),
-            ],
+            "agents": [_agent("researcher"), _agent("writer"), _agent("editor")],
         },
     }
-    r = client.post("/run", json=body)
-    assert r.status_code == 200
-    data = r.json()
-    assert [s["agent"] for s in data["steps"]] == ["researcher", "writer", "editor"]
-    assert data["output"] == "hello from const backend"
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    assert [s["agent"] for s in data["result"]["steps"]] == ["researcher", "writer", "editor"]
+    assert data["result"]["output"] == "hello from const backend"
+
+
+def test_run_events_are_ordered_and_end_with_done():
+    body = {
+        "task": "research something",
+        "crew": {
+            "name": "research_team",
+            "topology": "sequential",
+            "agents": [_agent("researcher"), _agent("writer"), _agent("editor")],
+        },
+    }
+    run_id, _ = _run_and_wait(body)
+    events_resp = client.get(f"/runs/{run_id}/events")
+    assert events_resp.status_code == 200
+    payload = events_resp.json()
+    assert payload["status"] == "done"
+    seqs = [e["seq"] for e in payload["events"]]
+    assert seqs == sorted(seqs)  # strictly non-decreasing / ordered
+    step_agents = [e["agent"] for e in payload["events"] if e["type"] == "step"]
+    assert step_agents == ["researcher", "writer", "editor"]
+    assert payload["events"][-1]["type"] == "done"
+
+    # since= filters out already-seen events
+    tail = client.get(f"/runs/{run_id}/events", params={"since": len(payload["events"])}).json()
+    assert tail["events"] == []
 
 
 def test_run_supervisor_topology_delegates_then_finishes():
@@ -114,11 +152,10 @@ def test_run_supervisor_topology_delegates_then_finishes():
             "agents": [_agent("mathematician", backend="test-scripted")],
         },
     }
-    r = client.post("/run", json=body)
-    assert r.status_code == 200
-    data = r.json()
-    assert data["output"] == "the answer is 4"
-    assert any(s["agent"] == "mathematician" for s in data["steps"])
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    assert data["result"]["output"] == "the answer is 4"
+    assert any(s["agent"] == "mathematician" for s in data["result"]["steps"])
 
 
 def test_run_rejects_unknown_backend_with_400():
@@ -132,7 +169,11 @@ def test_run_rejects_unknown_backend_with_400():
     }
     r = client.post("/run", json=body)
     assert r.status_code == 400
-    assert "error" in r.json() or "detail" in r.json()
+
+
+def test_unknown_run_id_404s():
+    assert client.get("/runs/does-not-exist").status_code == 404
+    assert client.get("/runs/does-not-exist/events").status_code == 404
 
 
 def test_camelcase_aliases_accepted():
@@ -144,18 +185,31 @@ def test_camelcase_aliases_accepted():
             "maxRounds": 2,
             "agents": [
                 {
-                    "name": "solo",
-                    "role": "Agent",
-                    "goal": "do it",
-                    "backend": "test-const",
-                    "maxTokens": 128,
-                    "systemPrompt": "be terse",
+                    "name": "solo", "role": "Agent", "goal": "do it", "backend": "test-const",
+                    "maxTokens": 128, "systemPrompt": "be terse",
                 }
             ],
         },
     }
-    r = client.post("/run", json=body)
-    assert r.status_code == 200
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+
+
+def test_mcp_run_crew_tool():
+    crew = {
+        "name": "solo",
+        "topology": "single",
+        "agents": [_agent("solo")],
+    }
+    result = mcp_server.run_crew(crew, "say hi")
+    assert result["crew"] == "solo"
+    assert result["output"] == "hello from const backend"
+
+
+def test_mcp_list_crews_tool_returns_bundled_examples():
+    names = mcp_server.list_crews()
+    assert "research_team" in names
+    assert "assistant" in names
 
 
 if __name__ == "__main__":

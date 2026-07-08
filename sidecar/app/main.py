@@ -9,17 +9,32 @@ established in the sibling ai-workflow project's api/server.py.
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import runner
 from .crew_builder import build_crew
-from .schemas import CrewResultOut, AgentResultOut, RunRequest
+from .mcp_server import mcp
+from .schemas import RunAcceptedResponse, RunEventsResponse, RunRequest, RunStatusResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("sidecar")
 
-app = FastAPI(title="Cohortex Studio Sidecar", version="0.1.0")
+# The MCP sub-app must be created before its session_manager exists, so build it first.
+_mcp_app = mcp.streamable_http_app()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    # mcp.session_manager.run() takes no args; FastAPI's lifespan protocol always
+    # passes the app in, so this thin wrapper adapts between the two conventions.
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(title="Cohortex Studio Sidecar", version="0.1.0", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +42,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/mcp", _mcp_app)
 
 
 @app.get("/ping")
@@ -54,31 +71,32 @@ def backends() -> dict:
     return {"backends": available_backends()}
 
 
-@app.post("/run", response_model=CrewResultOut)
-def run(req: RunRequest) -> CrewResultOut:
-    """Synchronous v1: builds the crew, runs it to completion, returns the full result.
-
-    Phase 2 adds POST /run returning {run_id} immediately + background execution +
-    GET /runs/{id}/events for streaming — this endpoint's request/response shapes for
-    the crew definition and the final result stay the same, only the timing changes.
-    """
+@app.post("/run", response_model=RunAcceptedResponse)
+def run(req: RunRequest) -> RunAcceptedResponse:
+    """Validate the crew definition, then start it running in a background thread and
+    return a run_id immediately. Poll /runs/{run_id} or /runs/{run_id}/events for progress."""
     try:
-        crew = build_crew(req.crew)
+        build_crew(req.crew)  # fail fast on a bad definition before starting a thread
     except Exception as e:  # noqa: BLE001
         log.warning("invalid crew definition: %s", e)
         raise HTTPException(status_code=400, detail=f"invalid crew definition: {e}") from e
 
-    try:
-        result = crew.run(req.task)
-    except Exception as e:  # noqa: BLE001
-        log.exception("crew run failed")
-        raise HTTPException(status_code=500, detail=f"crew run failed: {e}") from e
+    run_id = runner.start_run(req.crew, req.task)
+    return RunAcceptedResponse(run_id=run_id)
 
-    return CrewResultOut(
-        crew=result.crew,
-        output=result.output,
-        steps=[
-            AgentResultOut(agent=s.agent, output=s.output, raw=s.raw, meta=s.meta)
-            for s in result.steps
-        ],
-    )
+
+@app.get("/runs/{run_id}", response_model=RunStatusResponse)
+def get_run_status(run_id: str) -> RunStatusResponse:
+    state = runner.get_run(run_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id {run_id!r}")
+    return RunStatusResponse(status=state.status, result=state.result, error=state.error)
+
+
+@app.get("/runs/{run_id}/events", response_model=RunEventsResponse)
+def get_run_events(run_id: str, since: int = 0) -> RunEventsResponse:
+    found = runner.get_events(run_id, since=since)
+    if found is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id {run_id!r}")
+    events, status = found
+    return RunEventsResponse(events=events, status=status)
