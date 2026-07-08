@@ -1,0 +1,17 @@
+# Cohortex Studio sidecar — thin FastAPI wrapper around the Cohortex agent framework.
+#
+# Local dev: cohortex is installed in editable mode from the sibling repo:
+#   pip install -e ../../cohortex
+# Production (Cloud Run): pin to a specific commit so deploys are reproducible —
+# update this SHA when you want to pick up newer Cohortex changes.
+cohortex @ git+https://github.com/Ninja-Tw1sT/cohortex.git@99fb27146c3ceb31a13fec10343bd35d8ae03237
+
+fastapi~=0.139
+uvicorn[standard]~=0.49
+pydantic~=2.13
+mcp~=1.28
+httpx~=0.28
+python-dotenv~=1.2
+
+# Dev/test only
+pytest~=8.3

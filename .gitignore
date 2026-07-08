@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.bak
+.env.local
+**/.env
+**/.env.local
+
+# Python (sidecar)
+sidecar/__pycache__/
+sidecar/**/__pycache__/
+sidecar/.pytest_cache/
+sidecar/.venv/
+sidecar/venv/
+sidecar/*.egg-info/
+
+# Node (backend/frontend)
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.angular/
+
+# OS / editor
+.DS_Store
+Thumbs.db
