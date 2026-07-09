@@ -12,12 +12,20 @@ const router = express.Router();
 // recruiters can browse without logging in; signed-in users also see their own.
 const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.uid }] } : { ownerId: null });
 
+// Some deployments (e.g. the public demo, which has no sidecar/LLM backend
+// wired up) only serve pre-recorded replays. Set LIVE_RUNS_ENABLED=false to
+// reject live runs cleanly instead of timing out against a missing sidecar.
+const liveRunsEnabled = () => process.env.LIVE_RUNS_ENABLED !== "false";
+
 // POST /api/runs { crewId, task, mode } — start a crew (live) or fetch a replay.
 // Replay is free (stream stored steps, no sidecar call) so it stays public;
 // starting a live run costs a real LLM call and requires sign-in.
 router.post("/", runLimiter, asyncHandler(async (req, res) => {
   const { crewId, task, mode = "live" } = req.body;
   if (!task) return res.status(400).json({ error: "task is required" });
+  if (mode !== "replay" && !liveRunsEnabled()) {
+    return res.status(403).json({ error: "live runs are disabled on this deployment — try replay mode" });
+  }
   if (mode !== "replay" && !req.user) return res.status(401).json({ error: "sign-in required for a live run" });
 
   const crew = await Crew.findOne({ _id: crewId, ...readableBy(req.user) });

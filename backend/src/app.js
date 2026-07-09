@@ -9,10 +9,17 @@ const errorHandler = require("./middleware/errorHandler");
 const { optionalAuth } = require("./middleware/auth");
 const { apiLimiter } = require("./middleware/rateLimit");
 
+// ALLOWED_ORIGINS restricts CORS to specific origins in prod (comma-separated).
+// Unset (local dev, tests) falls back to allowing any origin.
+const corsOptions = () => {
+  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return allowed.length ? { origin: allowed } : {};
+};
+
 // App factory (no DB connection, no listen) so tests can mount it directly.
 function createApp() {
   const app = express();
-  app.use(cors());
+  app.use(cors(corsOptions()));
   app.use(express.json());
   app.use("/api", apiLimiter, optionalAuth);
 
