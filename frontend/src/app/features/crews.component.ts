@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { Agent, Crew, TOPOLOGIES, Topology } from '../core/models';
 
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
@@ -24,15 +25,18 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
             <span *ngIf="c.supervisorName" class="badge magenta">super: {{ c.supervisorName }}</span>
           </td>
           <td style="text-align:right">
-            <button class="ghost" (click)="edit(c)">Edit</button>
-            <button class="danger" (click)="remove(c)">Del</button>
+            <ng-container *ngIf="auth.user(); else noAccess">
+              <button class="ghost" (click)="edit(c)">Edit</button>
+              <button class="danger" (click)="remove(c)">Del</button>
+            </ng-container>
+            <ng-template #noAccess><span class="muted">—</span></ng-template>
           </td>
         </tr>
       </table>
       <p *ngIf="!crews.length" class="muted">No crews yet — build one below.</p>
     </div>
 
-    <div class="card">
+    <div class="card" *ngIf="auth.user(); else signInPrompt">
       <h3>{{ draft.id ? 'Edit crew' : 'Build a crew' }}</h3>
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
@@ -67,10 +71,17 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
         <button class="ghost" (click)="reset()" *ngIf="draft.id">Cancel</button>
       </div>
     </div>
+    <ng-template #signInPrompt>
+      <div class="card">
+        <p class="muted">Sign in to build your own crews. Demo crews above are read-only.</p>
+        <button class="primary" (click)="auth.signIn()">Sign in with Google</button>
+      </div>
+    </ng-template>
   `,
 })
 export class CrewsComponent implements OnInit {
   private api = inject(ApiService);
+  auth = inject(AuthService);
   topologies = TOPOLOGIES;
   crews: Crew[] = [];
   agents: Agent[] = [];

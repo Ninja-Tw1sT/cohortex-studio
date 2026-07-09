@@ -4,6 +4,7 @@
 .env.local
 **/.env
 **/.env.local
+backend/serviceAccountKey.json
 
 # Python (sidecar)
 sidecar/__pycache__/

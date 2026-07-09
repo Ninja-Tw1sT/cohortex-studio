@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { RunStreamService } from '../core/run-stream.service';
 import { Crew, Run, RunStep } from '../core/models';
 
@@ -24,7 +25,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
         </div>
         <div><label>Mode</label>
           <select [(ngModel)]="mode">
-            <option value="live">live (calls the LLMs)</option>
+            <option value="live" [disabled]="!auth.user()">live (calls the LLMs){{ auth.user() ? '' : ' — sign in required' }}</option>
             <option value="replay">replay (cached, no LLM cost)</option>
           </select>
         </div>
@@ -32,10 +33,11 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <label>Task</label>
       <textarea [(ngModel)]="task" placeholder="Explain why vector databases matter for AI applications"></textarea>
       <div style="margin-top:12px">
-        <button class="primary" (click)="run()" [disabled]="!crewId || !task || running">
+        <button class="primary" (click)="run()" [disabled]="!crewId || !task || running || (mode==='live' && !auth.user())">
           {{ running ? 'Running…' : 'Run ▸' }}
         </button>
         <span *ngIf="status" class="badge" [class.green]="status==='done'" [class.magenta]="status==='error'" [class.cyan]="status==='running'" style="margin-left:10px">{{ status }}</span>
+        <span *ngIf="mode==='live' && !auth.user()" class="muted" style="margin-left:10px">sign in to run live — try replay to preview</span>
       </div>
     </div>
 
@@ -70,12 +72,13 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 export class RunsComponent implements OnInit {
   private api = inject(ApiService);
   private streamer = inject(RunStreamService);
+  auth = inject(AuthService);
 
   crews: Crew[] = [];
   history: Run[] = [];
   crewId = '';
   task = '';
-  mode: 'live' | 'replay' = 'live';
+  mode: 'live' | 'replay' = 'replay';
 
   running = false;
   status = '';

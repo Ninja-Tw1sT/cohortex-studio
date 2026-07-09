@@ -51,6 +51,10 @@ a { color: var(--cyan); text-decoration: none; }
   box-shadow: 0 0 12px rgba(0, 245, 255, 0.25);
 }
 .topbar .tag { margin-left: auto; color: var(--dim); font-size: 12px; }
+.topbar .auth { display: flex; align-items: center; gap: 10px; }
+.topbar .auth .avatar { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--border); }
+.topbar .auth .who { color: var(--dim); font-size: 12px; }
+.topbar .auth button { padding: 6px 12px; font-size: 11px; }
 
 .wrap { max-width: 1100px; margin: 24px auto; padding: 0 20px; }
 

@@ -1,6 +1,7 @@
 const express = require("express");
 const Crew = require("../models/Crew");
 const asyncHandler = require("../util/asyncHandler");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -8,31 +9,39 @@ const FIELDS = ["name", "topology", "agentNames", "supervisorName", "maxRounds"]
 const pick = (body) =>
   Object.fromEntries(FIELDS.filter((f) => body[f] !== undefined).map((f) => [f, body[f]]));
 
-router.get("/", asyncHandler(async (_req, res) => {
-  res.json(await Crew.find().sort({ name: 1 }));
+// Public read: demo namespace (ownerId: null) is visible to everyone so
+// recruiters can browse without logging in; signed-in users also see their own.
+const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.uid }] } : { ownerId: null });
+
+router.get("/", asyncHandler(async (req, res) => {
+  res.json(await Crew.find(readableBy(req.user)).sort({ name: 1 }));
 }));
 
 router.get("/:id", asyncHandler(async (req, res) => {
-  const crew = await Crew.findById(req.params.id);
+  const crew = await Crew.findOne({ _id: req.params.id, ...readableBy(req.user) });
   if (!crew) return res.status(404).json({ error: "crew not found" });
   res.json(crew);
 }));
 
-router.post("/", asyncHandler(async (req, res) => {
-  const doc = await Crew.create({ ...pick(req.body), ownerId: req.user?.uid ?? null });
+router.post("/", requireAuth, asyncHandler(async (req, res) => {
+  const doc = await Crew.create({ ...pick(req.body), ownerId: req.user.uid });
   res.status(201).json(doc);
 }));
 
-router.put("/:id", asyncHandler(async (req, res) => {
-  const crew = await Crew.findByIdAndUpdate(req.params.id, pick(req.body), {
-    new: true, runValidators: true,
-  });
+router.put("/:id", requireAuth, asyncHandler(async (req, res) => {
+  // Demo crews (ownerId: null) aren't owned by any user and can't be edited
+  // via the API — only the seed script touches them.
+  const crew = await Crew.findOneAndUpdate(
+    { _id: req.params.id, ownerId: req.user.uid },
+    pick(req.body),
+    { new: true, runValidators: true }
+  );
   if (!crew) return res.status(404).json({ error: "crew not found" });
   res.json(crew);
 }));
 
-router.delete("/:id", asyncHandler(async (req, res) => {
-  const crew = await Crew.findByIdAndDelete(req.params.id);
+router.delete("/:id", requireAuth, asyncHandler(async (req, res) => {
+  const crew = await Crew.findOneAndDelete({ _id: req.params.id, ownerId: req.user.uid });
   if (!crew) return res.status(404).json({ error: "crew not found" });
   res.json({ ok: true });
 }));

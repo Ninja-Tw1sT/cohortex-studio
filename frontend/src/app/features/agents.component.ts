@@ -2,6 +2,7 @@ import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
+import { AuthService } from '../core/auth.service';
 import { Agent, BACKENDS } from '../core/models';
 
 interface Draft extends Partial<Agent> { toolsStr?: string; vaultsStr?: string; }
@@ -25,15 +26,18 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           <td><span class="badge cyan">{{ a.backend || 'default' }}</span></td>
           <td class="muted">{{ a.tools.join(', ') || '—' }}</td>
           <td style="text-align:right">
-            <button class="ghost" (click)="edit(a)">Edit</button>
-            <button class="danger" (click)="remove(a)">Del</button>
+            <ng-container *ngIf="auth.user(); else noAccess">
+              <button class="ghost" (click)="edit(a)">Edit</button>
+              <button class="danger" (click)="remove(a)">Del</button>
+            </ng-container>
+            <ng-template #noAccess><span class="muted">—</span></ng-template>
           </td>
         </tr>
       </table>
       <p *ngIf="!agents.length" class="muted">No agents yet — create one below.</p>
     </div>
 
-    <div class="card">
+    <div class="card" *ngIf="auth.user(); else signInPrompt">
       <h3>{{ draft.id ? 'Edit agent' : 'New agent' }}</h3>
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
@@ -60,10 +64,17 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
         <button class="ghost" (click)="reset()" *ngIf="draft.id">Cancel</button>
       </div>
     </div>
+    <ng-template #signInPrompt>
+      <div class="card">
+        <p class="muted">Sign in to create your own agents. Demo agents above are read-only.</p>
+        <button class="primary" (click)="auth.signIn()">Sign in with Google</button>
+      </div>
+    </ng-template>
   `,
 })
 export class AgentsComponent implements OnInit {
   private api = inject(ApiService);
+  auth = inject(AuthService);
   backends = BACKENDS;
   agents: Agent[] = [];
   draft: Draft = this.blank();

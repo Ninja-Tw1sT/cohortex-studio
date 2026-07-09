@@ -4,19 +4,27 @@ const Run = require("../models/Run");
 const asyncHandler = require("../util/asyncHandler");
 const { buildSidecarPayload } = require("../services/crewPayload");
 const sidecar = require("../services/sidecarClient");
+const { runLimiter } = require("../middleware/rateLimit");
 
 const router = express.Router();
 
+// Public read: demo namespace (ownerId: null) is visible to everyone so
+// recruiters can browse without logging in; signed-in users also see their own.
+const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.uid }] } : { ownerId: null });
+
 // POST /api/runs { crewId, task, mode } — start a crew (live) or fetch a replay.
-router.post("/", asyncHandler(async (req, res) => {
+// Replay is free (stream stored steps, no sidecar call) so it stays public;
+// starting a live run costs a real LLM call and requires sign-in.
+router.post("/", runLimiter, asyncHandler(async (req, res) => {
   const { crewId, task, mode = "live" } = req.body;
   if (!task) return res.status(400).json({ error: "task is required" });
+  if (mode !== "replay" && !req.user) return res.status(401).json({ error: "sign-in required for a live run" });
 
-  const crew = await Crew.findById(crewId);
+  const crew = await Crew.findOne({ _id: crewId, ...readableBy(req.user) });
   if (!crew) return res.status(404).json({ error: "crew not found" });
 
   if (mode === "replay") {
-    const replay = await Run.findOne({ crewName: crew.name, mode: "replay" }).sort({ createdAt: -1 });
+    const replay = await Run.findOne({ crewName: crew.name, mode: "replay", ...readableBy(req.user) }).sort({ createdAt: -1 });
     if (!replay) return res.status(404).json({ error: "no replay available for this crew" });
     return res.status(200).json({ runId: replay.id, status: replay.status });
   }
@@ -54,13 +62,13 @@ router.post("/", asyncHandler(async (req, res) => {
 }));
 
 // GET /api/runs — recent history.
-router.get("/", asyncHandler(async (_req, res) => {
-  res.json(await Run.find().sort({ createdAt: -1 }).limit(50));
+router.get("/", asyncHandler(async (req, res) => {
+  res.json(await Run.find(readableBy(req.user)).sort({ createdAt: -1 }).limit(50));
 }));
 
 // GET /api/runs/:id — poll fallback; syncs terminal state from the sidecar.
 router.get("/:id", asyncHandler(async (req, res) => {
-  const run = await Run.findById(req.params.id);
+  const run = await Run.findOne({ _id: req.params.id, ...readableBy(req.user) });
   if (!run) return res.status(404).json({ error: "run not found" });
 
   if (run.status === "running" && run.sidecarRunId) {
@@ -82,7 +90,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
 
 // GET /api/runs/:id/stream — SSE relay of the sidecar's step/done/error events.
 router.get("/:id/stream", asyncHandler(async (req, res) => {
-  const run = await Run.findById(req.params.id);
+  const run = await Run.findOne({ _id: req.params.id, ...readableBy(req.user) });
   if (!run) return res.status(404).json({ error: "run not found" });
 
   res.set({

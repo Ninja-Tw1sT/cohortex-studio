@@ -8,6 +8,7 @@ const Run = require("../src/models/Run");
 const { setup, teardown, clear } = require("./helpers");
 
 const app = createApp();
+const AUTH = "Bearer test:u1";
 
 // A fake Cohortex sidecar (real HTTP on an ephemeral port) so we exercise the
 // actual sidecarClient/fetch path, not a mock.
@@ -66,7 +67,7 @@ async function seedCrew() {
 describe("runs (live)", () => {
   test("POST builds the sidecar payload from Mongo and starts a run", async () => {
     const crew = await seedCrew();
-    const r = await request(app).post("/api/runs").send({ crewId: crew.id, task: "explain RAG" });
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "explain RAG" });
     expect(r.status).toBe(201);
     expect(r.body.runId).toBeDefined();
     // the fake sidecar received a fully-resolved crew payload
@@ -75,29 +76,35 @@ describe("runs (live)", () => {
     expect(calls.run.crew.topology).toBe("single");
   });
 
+  test("starting a live run without sign-in is rejected with 401", async () => {
+    const crew = await seedCrew();
+    const r = await request(app).post("/api/runs").send({ crewId: crew.id, task: "explain RAG" });
+    expect(r.status).toBe(401);
+  });
+
   test("GET /:id syncs the terminal result from the sidecar", async () => {
     const crew = await seedCrew();
-    const started = await request(app).post("/api/runs").send({ crewId: crew.id, task: "t" });
-    const got = await request(app).get(`/api/runs/${started.body.runId}`);
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
+    const got = await request(app).get(`/api/runs/${started.body.runId}`).set("Authorization", AUTH);
     expect(got.body.status).toBe("done");
     expect(got.body.result.output).toBe("FINAL");
   });
 
   test("unknown crew -> 404", async () => {
-    const r = await request(app).post("/api/runs").send({ crewId: "64b000000000000000000000", task: "t" });
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: "64b000000000000000000000", task: "t" });
     expect(r.status).toBe(404);
   });
 
   test("crew referencing a missing agent -> validation error", async () => {
     const crew = await Crew.create({ name: "bad", topology: "single", agentNames: ["ghost"] });
-    const r = await request(app).post("/api/runs").send({ crewId: crew.id, task: "t" });
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/unknown agents/);
   });
 });
 
 describe("runs (replay, no sidecar call)", () => {
-  test("SSE streams stored steps then done without touching the sidecar", async () => {
+  test("SSE streams stored steps then done without touching the sidecar, no sign-in needed", async () => {
     const crew = await Crew.create({ name: "rep", topology: "single", agentNames: [] });
     await Run.create({
       crewName: "rep",
