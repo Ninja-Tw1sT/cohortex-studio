@@ -1,4 +1,5 @@
 const express = require("express");
+const { BACKENDS: KNOWN_LLM_BACKENDS } = require("../models/Agent");
 const Crew = require("../models/Crew");
 const Run = require("../models/Run");
 const asyncHandler = require("../util/asyncHandler");
@@ -17,20 +18,19 @@ const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.
 // reject live runs cleanly instead of timing out against a missing sidecar.
 const liveRunsEnabled = () => process.env.LIVE_RUNS_ENABLED !== "false";
 
-const KNOWN_LLM_BACKENDS = ["openai", "anthropic", "gemini", "grok", "ollama"];
+const MAX_KEY_LEN = 300; // generous cap for real provider keys; blocks abuse/huge payloads
 
-// A visitor's own LLM config, supplied per-request and forwarded straight to the
-// sidecar — intentionally never added to the Run.create() call below, so it's
-// never written to Mongo. Lets live runs work even when LIVE_RUNS_ENABLED=false,
-// since the visitor is paying for their own LLM calls, not this deployment.
-function validLlmOverride(o) {
+// One visitor-supplied override for a single agent. Never persisted - forwarded
+// straight to the sidecar and discarded after the run starts.
+function validOverride(o) {
   if (!o || typeof o !== "object") return null;
   if (!KNOWN_LLM_BACKENDS.includes(o.backend)) return null;
   if (o.backend === "ollama") {
-    if (!o.baseUrl) return null;
-  } else if (!o.apiKey || o.apiKey.length > 500) {
-    return null;
+    if (!o.baseUrl || typeof o.baseUrl !== "string" || o.baseUrl.length > MAX_KEY_LEN) return null;
+  } else {
+    if (!o.apiKey || typeof o.apiKey !== "string" || o.apiKey.length > MAX_KEY_LEN) return null;
   }
+  if (o.model !== undefined && o.model !== null && typeof o.model !== "string") return null;
   return {
     backend: o.backend,
     model: o.model || undefined,
@@ -39,28 +39,33 @@ function validLlmOverride(o) {
   };
 }
 
-// POST /api/runs { crewId, task, mode, llmOverride? } — start a crew (live) or fetch a replay.
-// Replay is free (stream stored steps, no sidecar call) so it stays public;
-// starting a live run costs a real LLM call and requires sign-in, unless the
-// visitor supplied their own llmOverride (their key, their cost).
-router.post("/", runLimiter, asyncHandler(async (req, res) => {
-  const { crewId, task, mode = "live", llmOverride: rawOverride } = req.body;
-  if (!task) return res.status(400).json({ error: "task is required" });
-
-  let llmOverride = null;
-  if (rawOverride) {
-    llmOverride = validLlmOverride(rawOverride);
-    if (!llmOverride) {
-      return res.status(400).json({
-        error: `invalid llmOverride — backend must be one of ${KNOWN_LLM_BACKENDS.join(", ")}, with an apiKey (or baseUrl for ollama)`,
-      });
+// Validate a { [agentName]: override } map and confirm it fully covers `names`
+// (every agent + supervisor in the resolved crew). Returns { overrides, error }.
+function validateLlmOverrides(raw, names) {
+  if (raw === undefined || raw === null) return { overrides: null, error: null };
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return { overrides: null, error: "llmOverrides must be an object keyed by agent name" };
+  }
+  const overrides = {};
+  for (const name of names) {
+    const v = validOverride(raw[name]);
+    if (!v) {
+      return { overrides: null, error: `llmOverrides is missing a valid entry for agent "${name}"` };
     }
+    overrides[name] = v;
   }
+  return { overrides, error: null };
+}
 
-  if (mode !== "replay" && !liveRunsEnabled() && !llmOverride) {
-    return res.status(403).json({ error: "live runs are disabled on this deployment — add your own LLM key in LLM Config, or try replay mode" });
-  }
-  if (mode !== "replay" && !req.user) return res.status(401).json({ error: "sign-in required for a live run" });
+// POST /api/runs { crewId, task, mode, llmOverrides? } — start a crew (live) or fetch a replay.
+// Replay is free (stream stored steps, no sidecar call) so it stays public;
+// starting a live run costs a real LLM call and requires sign-in. A visitor can
+// bypass LIVE_RUNS_ENABLED by supplying llmOverrides that fully cover every
+// agent in the crew (their keys, their cost) — partial coverage is rejected
+// up front rather than left to fail deep inside the sidecar per-agent.
+router.post("/", runLimiter, asyncHandler(async (req, res) => {
+  const { crewId, task, mode = "live", llmOverrides: rawOverrides } = req.body;
+  if (!task) return res.status(400).json({ error: "task is required" });
 
   const crew = await Crew.findOne({ _id: crewId, ...readableBy(req.user) });
   if (!crew) return res.status(404).json({ error: "crew not found" });
@@ -70,6 +75,21 @@ router.post("/", runLimiter, asyncHandler(async (req, res) => {
     if (!replay) return res.status(404).json({ error: "no replay available for this crew" });
     return res.status(200).json({ runId: replay.id, status: replay.status });
   }
+
+  // Live mode: validate coverage against this crew's actual agent names.
+  const names = [...crew.agentNames, ...(crew.supervisorName ? [crew.supervisorName] : [])];
+  const hasOverrides = rawOverrides !== undefined && rawOverrides !== null;
+  let llmOverrides = null;
+  if (hasOverrides) {
+    const { overrides, error } = validateLlmOverrides(rawOverrides, names);
+    if (error) return res.status(400).json({ error });
+    llmOverrides = overrides;
+  }
+
+  if (!hasOverrides && !liveRunsEnabled()) {
+    return res.status(403).json({ error: "live runs are disabled on this deployment — add your own LLM key(s) in LLM Config, or try replay mode" });
+  }
+  if (!req.user) return res.status(401).json({ error: "sign-in required for a live run" });
 
   let payload;
   try {
@@ -86,10 +106,10 @@ router.post("/", runLimiter, asyncHandler(async (req, res) => {
     status: "running",
     mode: "live",
     startedAt: new Date(),
-  });
+  }); // no llmOverrides field here or in the schema - never persisted to Mongo
 
   try {
-    const { run_id } = await sidecar.startRun(payload, task, llmOverride);
+    const { run_id } = await sidecar.startRun(payload, task, llmOverrides);
     run.sidecarRunId = run_id;
     await run.save();
   } catch (e) {

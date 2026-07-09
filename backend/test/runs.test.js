@@ -64,6 +64,12 @@ async function seedCrew() {
   return Crew.create({ name: "solo_team", topology: "single", agentNames: ["researcher"] });
 }
 
+async function seedCrewTwoAgents() {
+  await Agent.create({ name: "researcher", role: "Research Analyst", goal: "g", backend: "ollama" });
+  await Agent.create({ name: "writer", role: "Writer", goal: "g", backend: "ollama" });
+  return Crew.create({ name: "duo_team", topology: "sequential", agentNames: ["researcher", "writer"] });
+}
+
 describe("runs (live)", () => {
   test("POST builds the sidecar payload from Mongo and starts a run", async () => {
     const crew = await seedCrew();
@@ -124,37 +130,53 @@ describe("runs (replay, no sidecar call)", () => {
   });
 });
 
-describe("runs (BYOK llmOverride)", () => {
+describe("runs (BYOK llmOverrides, per-agent map)", () => {
   const ORIGINAL_LIVE_RUNS_ENABLED = process.env.LIVE_RUNS_ENABLED;
   afterEach(() => {
     if (ORIGINAL_LIVE_RUNS_ENABLED === undefined) delete process.env.LIVE_RUNS_ENABLED;
     else process.env.LIVE_RUNS_ENABLED = ORIGINAL_LIVE_RUNS_ENABLED;
   });
 
-  test("live run still 403s with LIVE_RUNS_ENABLED=false and no llmOverride", async () => {
+  test("live run still 403s with LIVE_RUNS_ENABLED=false and no llmOverrides", async () => {
     process.env.LIVE_RUNS_ENABLED = "false";
     const crew = await seedCrew();
     const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
     expect(r.status).toBe(403);
   });
 
-  test("a valid llmOverride bypasses LIVE_RUNS_ENABLED=false and is never persisted", async () => {
+  test("a fully-covered llmOverrides map bypasses LIVE_RUNS_ENABLED=false and is never persisted", async () => {
     process.env.LIVE_RUNS_ENABLED = "false";
     const crew = await seedCrew();
-    const llmOverride = { backend: "openai", model: "gpt-4o-mini", apiKey: "sk-visitor-key" };
-    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t", llmOverride });
+    const llmOverrides = { researcher: { backend: "openai", model: "gpt-4o-mini", apiKey: "sk-visitor-key" } };
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t", llmOverrides });
     expect(r.status).toBe(201);
-    expect(calls.run.llmOverride).toEqual(llmOverride);
+    expect(calls.run.llmOverrides).toEqual(llmOverrides);
 
     const stored = await Run.findById(r.body.runId).lean();
-    expect(stored.llmOverride).toBeUndefined();
+    expect(stored.llmOverrides).toBeUndefined();
     expect(JSON.stringify(stored)).not.toContain("sk-visitor-key");
   });
 
-  test("an invalid llmOverride -> 400", async () => {
+  test("partial llmOverrides coverage is rejected with 400 and the sidecar is never called", async () => {
+    const crew = await seedCrewTwoAgents();
+    const llmOverrides = { researcher: { backend: "openai", apiKey: "sk-r" } }; // missing "writer"
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t", llmOverrides });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toMatch(/missing a valid entry for agent "writer"/);
+    expect(calls.run).toBeUndefined();
+  });
+
+  test("llmOverrides with an unknown backend value is rejected with 400", async () => {
     const crew = await seedCrew();
     const r = await request(app).post("/api/runs").set("Authorization", AUTH)
-      .send({ crewId: crew.id, task: "t", llmOverride: { backend: "not-a-backend" } });
+      .send({ crewId: crew.id, task: "t", llmOverrides: { researcher: { backend: "not-a-backend", apiKey: "x" } } });
+    expect(r.status).toBe(400);
+  });
+
+  test("llmOverrides with an apiKey over the length cap is rejected with 400", async () => {
+    const crew = await seedCrew();
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH)
+      .send({ crewId: crew.id, task: "t", llmOverrides: { researcher: { backend: "openai", apiKey: "x".repeat(301) } } });
     expect(r.status).toBe(400);
   });
 });

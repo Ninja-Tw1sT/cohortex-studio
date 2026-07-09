@@ -52,6 +52,20 @@ class ScriptedBackend:
         return r
 
 
+@register("test-multi")
+class MultiCaptureBackend:
+    """Captures the api_key/base_url it was constructed with and echoes the api_key
+    in its response — lets a test tell which override actually reached which agent."""
+
+    def __init__(self, model=None, api_key=None, base_url=None, **_):
+        self.model = model
+        self.api_key = api_key
+        self.base_url = base_url
+
+    def chat(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        return f"response-from-{self.api_key or 'no-key'}"
+
+
 def _agent(name, role="Agent", backend="test-const", **overrides):
     a = {"name": name, "role": role, "goal": "do the job", "backend": backend}
     a.update(overrides)
@@ -169,6 +183,59 @@ def test_run_rejects_unknown_backend_with_400():
     }
     r = client.post("/run", json=body)
     assert r.status_code == 400
+
+
+def test_run_with_per_agent_llm_overrides_uses_correct_override_per_agent():
+    body = {
+        "task": "x",
+        "crew": {
+            "name": "byok_team",
+            "topology": "sequential",
+            "agents": [_agent("researcher", backend="test-multi"), _agent("writer", backend="test-multi")],
+        },
+        "llmOverrides": {
+            "researcher": {"backend": "test-multi", "apiKey": "key-r"},
+            "writer": {"backend": "test-multi", "apiKey": "key-w"},
+        },
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    steps = {s["agent"]: s["output"] for s in data["result"]["steps"]}
+    assert steps["researcher"] == "response-from-key-r"
+    assert steps["writer"] == "response-from-key-w"
+
+
+def test_run_missing_override_for_one_agent_falls_back_to_agents_own_backend():
+    # llm_overrides not covering every agent is the sidecar's own, deliberately
+    # permissive behavior — full-coverage enforcement is Express's job (the
+    # sidecar is also reachable via MCP/local dev with no Express gate in front
+    # of it), so an uncovered agent just uses its own stored backend.
+    body = {
+        "task": "x",
+        "crew": {
+            "name": "partial_byok_team",
+            "topology": "sequential",
+            "agents": [_agent("researcher", backend="test-multi"), _agent("writer", backend="test-const")],
+        },
+        "llmOverrides": {
+            "researcher": {"backend": "test-multi", "apiKey": "key-r"},
+        },
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    steps = {s["agent"]: s["output"] for s in data["result"]["steps"]}
+    assert steps["researcher"] == "response-from-key-r"
+    assert steps["writer"] == "hello from const backend"
+
+
+def test_run_rejects_malformed_llm_overrides_shape():
+    body = {
+        "task": "x",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]},
+        "llmOverrides": ["not", "a", "map"],
+    }
+    r = client.post("/run", json=body)
+    assert r.status_code == 422  # pydantic body validation, never reaches the handler
 
 
 def test_unknown_run_id_404s():

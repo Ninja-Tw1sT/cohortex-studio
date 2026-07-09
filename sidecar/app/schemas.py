@@ -35,8 +35,8 @@ class CrewIn(BaseModel):
 
 
 class LlmOverrideIn(BaseModel):
-    """A visitor's own LLM config for a single run — never persisted, just relayed
-    from Express into whichever backend build_crew constructs for this crew."""
+    """A visitor's own LLM config for one agent in the crew — never persisted,
+    just relayed from Express into whichever backend build_crew constructs."""
     model_config = ConfigDict(populate_by_name=True)
 
     backend: str
@@ -48,7 +48,10 @@ class LlmOverrideIn(BaseModel):
 class RunRequest(BaseModel):
     task: str
     crew: CrewIn
-    llm_override: LlmOverrideIn | None = Field(default=None, alias="llmOverride")
+    # Keyed by agent name (including the supervisor's name, if any). Absent key
+    # or absent RunRequest.llm_overrides entirely => that agent uses its stored
+    # backend/model with no api_key/base_url override (env-var backends only).
+    llm_overrides: dict[str, LlmOverrideIn] | None = Field(default=None, alias="llmOverrides")
 
 
 class RunAcceptedResponse(BaseModel):

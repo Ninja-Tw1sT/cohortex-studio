@@ -11,6 +11,13 @@ export interface LlmConfig {
   baseUrl?: string;
 }
 
+// One named credential in the visitor's saved list, assignable per-agent on
+// the Runs page.
+export interface SavedLlmCredential extends LlmConfig {
+  id: string;
+  label: string;
+}
+
 export interface Agent {
   id?: string;
   name: string;

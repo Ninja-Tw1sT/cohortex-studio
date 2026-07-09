@@ -30,9 +30,13 @@ def _to_profile(p: AgentProfileIn, override: LlmOverrideIn | None = None) -> Age
     )
 
 
-def build_crew(crew_in: CrewIn, override: LlmOverrideIn | None = None) -> Crew:
-    agents = [build_agent(_to_profile(p, override)) for p in crew_in.agents]
-    supervisor = build_agent(_to_profile(crew_in.supervisor, override)) if crew_in.supervisor else None
+def build_crew(crew_in: CrewIn, llm_overrides: dict[str, LlmOverrideIn] | None = None) -> Crew:
+    overrides = llm_overrides or {}
+    agents = [build_agent(_to_profile(p, overrides.get(p.name))) for p in crew_in.agents]
+    supervisor = (
+        build_agent(_to_profile(crew_in.supervisor, overrides.get(crew_in.supervisor.name)))
+        if crew_in.supervisor else None
+    )
     return Crew(
         crew_in.name,
         agents,

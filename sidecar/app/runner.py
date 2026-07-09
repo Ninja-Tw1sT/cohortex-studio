@@ -65,10 +65,11 @@ def _to_result_out(result) -> CrewResultOut:
     )
 
 
-def _execute(run_id: str, crew_in: CrewIn, task: str, override: LlmOverrideIn | None = None) -> None:
+def _execute(run_id: str, crew_in: CrewIn, task: str,
+              llm_overrides: dict[str, LlmOverrideIn] | None = None) -> None:
     state = _REGISTRY[run_id]
     try:
-        crew = build_crew(crew_in, override)
+        crew = build_crew(crew_in, llm_overrides)
         for a in crew.agents:
             _wrap_agent_for_events(a, state)
         if crew.supervisor:
@@ -85,11 +86,12 @@ def _execute(run_id: str, crew_in: CrewIn, task: str, override: LlmOverrideIn | 
         state.add_event({"type": "error", "message": str(e)})
 
 
-def start_run(crew_in: CrewIn, task: str, override: LlmOverrideIn | None = None) -> str:
+def start_run(crew_in: CrewIn, task: str,
+               llm_overrides: dict[str, LlmOverrideIn] | None = None) -> str:
     run_id = uuid.uuid4().hex
     with _REGISTRY_LOCK:
         _REGISTRY[run_id] = RunState()
-    _EXECUTOR.submit(_execute, run_id, crew_in, task, override)
+    _EXECUTOR.submit(_execute, run_id, crew_in, task, llm_overrides)
     return run_id
 
 

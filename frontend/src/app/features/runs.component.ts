@@ -6,7 +6,7 @@ import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
 import { RunStreamService } from '../core/run-stream.service';
-import { Crew, Run, RunStep } from '../core/models';
+import { Agent, Crew, LlmConfig, Run, RunStep } from '../core/models';
 
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 
@@ -20,28 +20,45 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
         <div><label>Crew</label>
-          <select [(ngModel)]="crewId">
+          <select [ngModel]="crewId" (ngModelChange)="onCrewChange($event)">
             <option [ngValue]="''">— pick a crew —</option>
             <option *ngFor="let c of crews" [ngValue]="c.id">{{ c.name }} ({{ c.topology }})</option>
           </select>
         </div>
         <div><label>Mode</label>
           <select [(ngModel)]="mode">
-            <option value="live" [disabled]="!canRunLive()">live (calls the LLMs){{ canRunLive() ? '' : ' — see hint below' }}</option>
+            <option value="live" [disabled]="!auth.user()">live (calls the LLMs){{ auth.user() ? '' : ' — sign in required' }}</option>
             <option value="replay">replay (cached, no LLM cost)</option>
           </select>
         </div>
       </div>
+
+      <div class="card" *ngIf="mode==='live' && crewMembers.length" style="margin:14px 0">
+        <h3>Assign an LLM credential to each agent</h3>
+        <p class="muted" *ngIf="!llmConfig.credentials().length">
+          No saved credentials yet — add one in <a routerLink="/llm-config">LLM Config</a>.
+        </p>
+        <div class="row" *ngFor="let m of crewMembers">
+          <div><label>{{ m.name }} <span class="muted">({{ m.role }})</span></label>
+            <select [(ngModel)]="assignments[m.name]">
+              <option [ngValue]="null">— none (use server default) —</option>
+              <option *ngFor="let c of llmConfig.credentials()" [ngValue]="c.id">{{ c.label }} ({{ c.backend }})</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <label>Task</label>
       <textarea [(ngModel)]="task" placeholder="Explain why vector databases matter for AI applications"></textarea>
       <div style="margin-top:12px">
-        <button class="primary" (click)="run()" [disabled]="!crewId || !task || running || (mode==='live' && !canRunLive())">
+        <button class="primary" (click)="run()"
+          [disabled]="!crewId || !task || running || (mode==='live' && !auth.user()) || (mode==='live' && crewMembers.length && !allCovered())">
           {{ running ? 'Running…' : 'Run ▸' }}
         </button>
         <span *ngIf="status" class="badge" [class.green]="status==='done'" [class.magenta]="status==='error'" [class.cyan]="status==='running'" style="margin-left:10px">{{ status }}</span>
         <span *ngIf="mode==='live' && !auth.user()" class="muted" style="margin-left:10px">sign in to run live — try replay to preview</span>
-        <span *ngIf="mode==='live' && auth.user() && !llmConfig.config()" class="muted" style="margin-left:10px">
-          add your own API key in <a routerLink="/llm-config">LLM Config</a> to run live
+        <span *ngIf="mode==='live' && auth.user() && crewMembers.length && !allCovered()" class="muted" style="margin-left:10px">
+          assign a saved credential to every agent to run live
         </span>
       </div>
     </div>
@@ -81,6 +98,9 @@ export class RunsComponent implements OnInit {
   llmConfig = inject(LlmConfigService);
 
   crews: Crew[] = [];
+  agents: Agent[] = [];
+  crewMembers: Agent[] = [];
+  assignments: Record<string, string | null> = {};
   history: Run[] = [];
   crewId = '';
   task = '';
@@ -94,12 +114,26 @@ export class RunsComponent implements OnInit {
 
   ngOnInit() {
     this.api.crews().subscribe({ next: (c) => (this.crews = c) });
+    this.api.agents().subscribe({ next: (a) => (this.agents = a) });
     this.loadHistory();
   }
 
   loadHistory() { this.api.runs().subscribe({ next: (r) => (this.history = r) }); }
 
-  canRunLive() { return !!this.auth.user() && !!this.llmConfig.config(); }
+  onCrewChange(id: string) {
+    this.crewId = id;
+    const crew = this.crews.find((c) => c.id === id);
+    const names = crew
+      ? Array.from(new Set([...crew.agentNames, ...(crew.supervisorName ? [crew.supervisorName] : [])]))
+      : [];
+    const byName = new Map(this.agents.map((a) => [a.name, a]));
+    this.crewMembers = names.map((n) => byName.get(n)).filter((a): a is Agent => !!a);
+    this.assignments = {};
+  }
+
+  allCovered() {
+    return this.crewMembers.every((m) => !!this.assignments[m.name]);
+  }
 
   run() {
     this.error = '';
@@ -108,8 +142,17 @@ export class RunsComponent implements OnInit {
     this.running = true;
     this.status = 'running';
 
-    const override = this.mode === 'live' ? this.llmConfig.config() : null;
-    this.api.createRun(this.crewId, this.task, this.mode, override).subscribe({
+    const overrides: Record<string, LlmConfig> | undefined =
+      this.mode === 'live' && this.crewMembers.length
+        ? Object.fromEntries(
+            this.crewMembers.map((m) => {
+              const cred = this.llmConfig.credentials().find((c) => c.id === this.assignments[m.name]);
+              return [m.name, { backend: cred!.backend, model: cred!.model || undefined, apiKey: cred!.apiKey, baseUrl: cred!.baseUrl }];
+            })
+          )
+        : undefined;
+
+    this.api.createRun(this.crewId, this.task, this.mode, overrides).subscribe({
       next: ({ runId }) => this.listen(runId),
       error: (e) => { this.error = errMsg(e); this.running = false; this.status = 'error'; },
     });

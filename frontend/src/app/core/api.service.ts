@@ -25,8 +25,15 @@ export class ApiService {
   // runs
   runs(): Observable<Run[]> { return this.http.get<Run[]>(`${this.base}/runs`); }
   getRun(id: string): Observable<Run> { return this.http.get<Run>(`${this.base}/runs/${id}`); }
-  createRun(crewId: string, task: string, mode: 'live' | 'replay', llmOverride?: LlmConfig | null): Observable<{ runId: string; status: string }> {
-    return this.http.post<{ runId: string; status: string }>(`${this.base}/runs`, { crewId, task, mode, llmOverride });
+  createRun(
+    crewId: string,
+    task: string,
+    mode: 'live' | 'replay',
+    llmOverrides?: Record<string, LlmConfig>
+  ): Observable<{ runId: string; status: string }> {
+    return this.http.post<{ runId: string; status: string }>(`${this.base}/runs`, {
+      crewId, task, mode, llmOverrides,
+    });
   }
   streamUrl(runId: string): string { return `${this.base}/runs/${runId}/stream`; }
 }
