@@ -1,7 +1,7 @@
 // Swapped in for `ng build --configuration production` via angular.json's
-// fileReplacements. Update apiBase once the Cloud Run backend URL is known.
+// fileReplacements.
 export const environment = {
-  apiBase: 'https://cohortex-studio-api-REPLACE_ME.a.run.app',
+  apiBase: 'https://cohortex-studio-api-1028715429573.us-central1.run.app',
   firebaseConfig: {
     apiKey: 'AIzaSyAnYT89Q27XAC9kFuMKeCbS9Mb07EL2TLs',
     authDomain: 'cohortex-studio.firebaseapp.com',
