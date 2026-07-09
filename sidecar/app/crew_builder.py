@@ -10,27 +10,29 @@ from cohortex.orchestrator import Crew
 from cohortex.profiles import AgentProfile
 from cohortex.runtime import build_agent
 
-from .schemas import AgentProfileIn, CrewIn
+from .schemas import AgentProfileIn, CrewIn, LlmOverrideIn
 
 
-def _to_profile(p: AgentProfileIn) -> AgentProfile:
+def _to_profile(p: AgentProfileIn, override: LlmOverrideIn | None = None) -> AgentProfile:
     return AgentProfile(
         name=p.name,
         role=p.role,
         goal=p.goal,
-        backend=p.backend,
-        model=p.model,
+        backend=override.backend if override else p.backend,
+        model=(override.model if override and override.model else p.model),
         temperature=p.temperature,
         max_tokens=p.max_tokens,
         system_prompt=p.system_prompt,
         vaults=list(p.vaults),
         tools=list(p.tools),
+        api_key=override.api_key if override else None,
+        base_url=override.base_url if override else None,
     )
 
 
-def build_crew(crew_in: CrewIn) -> Crew:
-    agents = [build_agent(_to_profile(p)) for p in crew_in.agents]
-    supervisor = build_agent(_to_profile(crew_in.supervisor)) if crew_in.supervisor else None
+def build_crew(crew_in: CrewIn, override: LlmOverrideIn | None = None) -> Crew:
+    agents = [build_agent(_to_profile(p, override)) for p in crew_in.agents]
+    supervisor = build_agent(_to_profile(crew_in.supervisor, override)) if crew_in.supervisor else None
     return Crew(
         crew_in.name,
         agents,

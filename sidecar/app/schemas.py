@@ -34,9 +34,21 @@ class CrewIn(BaseModel):
     agents: list[AgentProfileIn] = Field(default_factory=list)
 
 
+class LlmOverrideIn(BaseModel):
+    """A visitor's own LLM config for a single run — never persisted, just relayed
+    from Express into whichever backend build_crew constructs for this crew."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    backend: str
+    model: str | None = None
+    api_key: str | None = Field(default=None, alias="apiKey")
+    base_url: str | None = Field(default=None, alias="baseUrl")
+
+
 class RunRequest(BaseModel):
     task: str
     crew: CrewIn
+    llm_override: LlmOverrideIn | None = Field(default=None, alias="llmOverride")
 
 
 class RunAcceptedResponse(BaseModel):

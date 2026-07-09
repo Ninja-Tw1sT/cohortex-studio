@@ -17,14 +17,48 @@ const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.
 // reject live runs cleanly instead of timing out against a missing sidecar.
 const liveRunsEnabled = () => process.env.LIVE_RUNS_ENABLED !== "false";
 
-// POST /api/runs { crewId, task, mode } — start a crew (live) or fetch a replay.
+const KNOWN_LLM_BACKENDS = ["openai", "anthropic", "gemini", "grok", "ollama"];
+
+// A visitor's own LLM config, supplied per-request and forwarded straight to the
+// sidecar — intentionally never added to the Run.create() call below, so it's
+// never written to Mongo. Lets live runs work even when LIVE_RUNS_ENABLED=false,
+// since the visitor is paying for their own LLM calls, not this deployment.
+function validLlmOverride(o) {
+  if (!o || typeof o !== "object") return null;
+  if (!KNOWN_LLM_BACKENDS.includes(o.backend)) return null;
+  if (o.backend === "ollama") {
+    if (!o.baseUrl) return null;
+  } else if (!o.apiKey || o.apiKey.length > 500) {
+    return null;
+  }
+  return {
+    backend: o.backend,
+    model: o.model || undefined,
+    apiKey: o.apiKey || undefined,
+    baseUrl: o.baseUrl || undefined,
+  };
+}
+
+// POST /api/runs { crewId, task, mode, llmOverride? } — start a crew (live) or fetch a replay.
 // Replay is free (stream stored steps, no sidecar call) so it stays public;
-// starting a live run costs a real LLM call and requires sign-in.
+// starting a live run costs a real LLM call and requires sign-in, unless the
+// visitor supplied their own llmOverride (their key, their cost).
 router.post("/", runLimiter, asyncHandler(async (req, res) => {
-  const { crewId, task, mode = "live" } = req.body;
+  const { crewId, task, mode = "live", llmOverride: rawOverride } = req.body;
   if (!task) return res.status(400).json({ error: "task is required" });
-  if (mode !== "replay" && !liveRunsEnabled()) {
-    return res.status(403).json({ error: "live runs are disabled on this deployment — try replay mode" });
+
+  let llmOverride = null;
+  if (rawOverride) {
+    llmOverride = validLlmOverride(rawOverride);
+    if (!llmOverride) {
+      return res.status(400).json({
+        error: `invalid llmOverride — backend must be one of ${KNOWN_LLM_BACKENDS.join(", ")}, with an apiKey (or baseUrl for ollama)`,
+      });
+    }
+  }
+
+  if (mode !== "replay" && !liveRunsEnabled() && !llmOverride) {
+    return res.status(403).json({ error: "live runs are disabled on this deployment — add your own LLM key in LLM Config, or try replay mode" });
   }
   if (mode !== "replay" && !req.user) return res.status(401).json({ error: "sign-in required for a live run" });
 
@@ -55,7 +89,7 @@ router.post("/", runLimiter, asyncHandler(async (req, res) => {
   });
 
   try {
-    const { run_id } = await sidecar.startRun(payload, task);
+    const { run_id } = await sidecar.startRun(payload, task, llmOverride);
     run.sidecarRunId = run_id;
     await run.save();
   } catch (e) {

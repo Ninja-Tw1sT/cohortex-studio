@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .crew_builder import build_crew
-from .schemas import AgentResultOut, CrewIn, CrewResultOut
+from .schemas import AgentResultOut, CrewIn, CrewResultOut, LlmOverrideIn
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cohortex-run")
 
@@ -65,10 +65,10 @@ def _to_result_out(result) -> CrewResultOut:
     )
 
 
-def _execute(run_id: str, crew_in: CrewIn, task: str) -> None:
+def _execute(run_id: str, crew_in: CrewIn, task: str, override: LlmOverrideIn | None = None) -> None:
     state = _REGISTRY[run_id]
     try:
-        crew = build_crew(crew_in)
+        crew = build_crew(crew_in, override)
         for a in crew.agents:
             _wrap_agent_for_events(a, state)
         if crew.supervisor:
@@ -85,11 +85,11 @@ def _execute(run_id: str, crew_in: CrewIn, task: str) -> None:
         state.add_event({"type": "error", "message": str(e)})
 
 
-def start_run(crew_in: CrewIn, task: str) -> str:
+def start_run(crew_in: CrewIn, task: str, override: LlmOverrideIn | None = None) -> str:
     run_id = uuid.uuid4().hex
     with _REGISTRY_LOCK:
         _REGISTRY[run_id] = RunState()
-    _EXECUTOR.submit(_execute, run_id, crew_in, task)
+    _EXECUTOR.submit(_execute, run_id, crew_in, task, override)
     return run_id
 
 

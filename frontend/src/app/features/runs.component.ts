@@ -1,8 +1,10 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { LlmConfigService } from '../core/llm-config.service';
 import { RunStreamService } from '../core/run-stream.service';
 import { Crew, Run, RunStep } from '../core/models';
 
@@ -11,7 +13,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 @Component({
   selector: 'app-runs',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="card">
       <h2>Run a crew</h2>
@@ -25,7 +27,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
         </div>
         <div><label>Mode</label>
           <select [(ngModel)]="mode">
-            <option value="live" [disabled]="!auth.user()">live (calls the LLMs){{ auth.user() ? '' : ' — sign in required' }}</option>
+            <option value="live" [disabled]="!canRunLive()">live (calls the LLMs){{ canRunLive() ? '' : ' — see hint below' }}</option>
             <option value="replay">replay (cached, no LLM cost)</option>
           </select>
         </div>
@@ -33,11 +35,14 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <label>Task</label>
       <textarea [(ngModel)]="task" placeholder="Explain why vector databases matter for AI applications"></textarea>
       <div style="margin-top:12px">
-        <button class="primary" (click)="run()" [disabled]="!crewId || !task || running || (mode==='live' && !auth.user())">
+        <button class="primary" (click)="run()" [disabled]="!crewId || !task || running || (mode==='live' && !canRunLive())">
           {{ running ? 'Running…' : 'Run ▸' }}
         </button>
         <span *ngIf="status" class="badge" [class.green]="status==='done'" [class.magenta]="status==='error'" [class.cyan]="status==='running'" style="margin-left:10px">{{ status }}</span>
         <span *ngIf="mode==='live' && !auth.user()" class="muted" style="margin-left:10px">sign in to run live — try replay to preview</span>
+        <span *ngIf="mode==='live' && auth.user() && !llmConfig.config()" class="muted" style="margin-left:10px">
+          add your own API key in <a routerLink="/llm-config">LLM Config</a> to run live
+        </span>
       </div>
     </div>
 
@@ -73,6 +78,7 @@ export class RunsComponent implements OnInit {
   private api = inject(ApiService);
   private streamer = inject(RunStreamService);
   auth = inject(AuthService);
+  llmConfig = inject(LlmConfigService);
 
   crews: Crew[] = [];
   history: Run[] = [];
@@ -93,6 +99,8 @@ export class RunsComponent implements OnInit {
 
   loadHistory() { this.api.runs().subscribe({ next: (r) => (this.history = r) }); }
 
+  canRunLive() { return !!this.auth.user() && !!this.llmConfig.config(); }
+
   run() {
     this.error = '';
     this.steps = [];
@@ -100,7 +108,8 @@ export class RunsComponent implements OnInit {
     this.running = true;
     this.status = 'running';
 
-    this.api.createRun(this.crewId, this.task, this.mode).subscribe({
+    const override = this.mode === 'live' ? this.llmConfig.config() : null;
+    this.api.createRun(this.crewId, this.task, this.mode, override).subscribe({
       next: ({ runId }) => this.listen(runId),
       error: (e) => { this.error = errMsg(e); this.running = false; this.status = 'error'; },
     });

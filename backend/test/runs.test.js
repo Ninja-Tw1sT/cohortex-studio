@@ -123,3 +123,38 @@ describe("runs (replay, no sidecar call)", () => {
     expect(stream.text).toContain("CACHED");
   });
 });
+
+describe("runs (BYOK llmOverride)", () => {
+  const ORIGINAL_LIVE_RUNS_ENABLED = process.env.LIVE_RUNS_ENABLED;
+  afterEach(() => {
+    if (ORIGINAL_LIVE_RUNS_ENABLED === undefined) delete process.env.LIVE_RUNS_ENABLED;
+    else process.env.LIVE_RUNS_ENABLED = ORIGINAL_LIVE_RUNS_ENABLED;
+  });
+
+  test("live run still 403s with LIVE_RUNS_ENABLED=false and no llmOverride", async () => {
+    process.env.LIVE_RUNS_ENABLED = "false";
+    const crew = await seedCrew();
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
+    expect(r.status).toBe(403);
+  });
+
+  test("a valid llmOverride bypasses LIVE_RUNS_ENABLED=false and is never persisted", async () => {
+    process.env.LIVE_RUNS_ENABLED = "false";
+    const crew = await seedCrew();
+    const llmOverride = { backend: "openai", model: "gpt-4o-mini", apiKey: "sk-visitor-key" };
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t", llmOverride });
+    expect(r.status).toBe(201);
+    expect(calls.run.llmOverride).toEqual(llmOverride);
+
+    const stored = await Run.findById(r.body.runId).lean();
+    expect(stored.llmOverride).toBeUndefined();
+    expect(JSON.stringify(stored)).not.toContain("sk-visitor-key");
+  });
+
+  test("an invalid llmOverride -> 400", async () => {
+    const crew = await seedCrew();
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH)
+      .send({ crewId: crew.id, task: "t", llmOverride: { backend: "not-a-backend" } });
+    expect(r.status).toBe(400);
+  });
+});

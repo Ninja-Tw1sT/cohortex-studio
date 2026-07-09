@@ -2,6 +2,15 @@ export const BACKENDS = ['ollama', 'openai', 'anthropic', 'gemini', 'grok'] as c
 export const TOPOLOGIES = ['single', 'sequential', 'supervisor'] as const;
 export type Topology = (typeof TOPOLOGIES)[number];
 
+// A visitor's own LLM config for live runs — kept in the browser only (see
+// LlmConfigService), sent per-request, never persisted server-side.
+export interface LlmConfig {
+  backend: (typeof BACKENDS)[number];
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
 export interface Agent {
   id?: string;
   name: string;

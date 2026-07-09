@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Agent, Crew, Run } from './models';
+import { Agent, Crew, LlmConfig, Run } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -25,8 +25,8 @@ export class ApiService {
   // runs
   runs(): Observable<Run[]> { return this.http.get<Run[]>(`${this.base}/runs`); }
   getRun(id: string): Observable<Run> { return this.http.get<Run>(`${this.base}/runs/${id}`); }
-  createRun(crewId: string, task: string, mode: 'live' | 'replay'): Observable<{ runId: string; status: string }> {
-    return this.http.post<{ runId: string; status: string }>(`${this.base}/runs`, { crewId, task, mode });
+  createRun(crewId: string, task: string, mode: 'live' | 'replay', llmOverride?: LlmConfig | null): Observable<{ runId: string; status: string }> {
+    return this.http.post<{ runId: string; status: string }>(`${this.base}/runs`, { crewId, task, mode, llmOverride });
   }
   streamUrl(runId: string): string { return `${this.base}/runs/${runId}/stream`; }
 }

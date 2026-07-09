@@ -13,6 +13,7 @@ import { AuthService } from './core/auth.service';
         <a routerLink="/crews" routerLinkActive="active">Crews</a>
         <a routerLink="/agents" routerLinkActive="active">Agents</a>
         <a routerLink="/runs" routerLinkActive="active">Run</a>
+        <a routerLink="/llm-config" routerLinkActive="active">LLM Config</a>
       </nav>
       <div class="tag">// visual multi-agent studio</div>
       <div class="auth" *ngIf="auth.ready()">
