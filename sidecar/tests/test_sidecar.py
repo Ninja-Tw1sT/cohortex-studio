@@ -29,6 +29,7 @@ class ConstBackend:
         self.model = model or "const"
 
     def chat(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        self.last_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
         return "hello from const backend"
 
 
@@ -172,6 +173,19 @@ def test_run_supervisor_topology_delegates_then_finishes():
     assert any(s["agent"] == "mathematician" for s in data["result"]["steps"])
 
 
+def test_run_events_include_usage_in_meta():
+    body = {
+        "task": "say hi",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]},
+    }
+    run_id, data = _run_and_wait(body)
+    usage = data["result"]["steps"][0]["meta"].get("usage")
+    assert usage is not None
+    assert usage["prompt_tokens"] == 10
+    assert usage["completion_tokens"] == 5
+    assert usage["total_tokens"] == 15
+
+
 def test_run_rejects_unknown_backend_with_400():
     body = {
         "task": "x",
@@ -183,6 +197,20 @@ def test_run_rejects_unknown_backend_with_400():
     }
     r = client.post("/run", json=body)
     assert r.status_code == 400
+
+
+def test_run_sequential_with_max_handoff_chars():
+    body = {
+        "task": "x",
+        "crew": {
+            "name": "truncated_team",
+            "topology": "sequential",
+            "maxHandoffChars": 200,
+            "agents": [_agent("researcher"), _agent("writer")],
+        },
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
 
 
 def test_run_with_per_agent_llm_overrides_uses_correct_override_per_agent():
@@ -236,6 +264,18 @@ def test_run_rejects_malformed_llm_overrides_shape():
     }
     r = client.post("/run", json=body)
     assert r.status_code == 422  # pydantic body validation, never reaches the handler
+
+
+def test_run_with_memories_in_payload():
+    body = {
+        "task": "follow up on RAG research",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]},
+        "memories": [
+            {"summary": "Previous run discussed vector databases and RAG patterns", "task": "explain RAG"},
+        ],
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
 
 
 def test_unknown_run_id_404s():

@@ -5,7 +5,7 @@ const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
-const FIELDS = ["name", "topology", "agentNames", "supervisorName", "maxRounds"];
+const FIELDS = ["name", "topology", "agentNames", "supervisorName", "maxRounds", "maxHandoffChars"];
 const pick = (body) =>
   Object.fromEntries(FIELDS.filter((f) => body[f] !== undefined).map((f) => [f, body[f]]));
 

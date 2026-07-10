@@ -30,6 +30,7 @@ class CrewIn(BaseModel):
     name: str
     topology: str = "sequential"  # "single" | "sequential" | "supervisor"
     max_rounds: int = Field(default=4, alias="maxRounds")
+    max_handoff_chars: int | None = Field(default=None, alias="maxHandoffChars")
     supervisor: AgentProfileIn | None = None
     agents: list[AgentProfileIn] = Field(default_factory=list)
 
@@ -45,6 +46,16 @@ class LlmOverrideIn(BaseModel):
     base_url: str | None = Field(default=None, alias="baseUrl")
 
 
+class MemoryIn(BaseModel):
+    """A summary from a previous run — injected as system-prompt context for
+    cross-run learning."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    summary: str
+    task: str
+    created_at: str | None = Field(default=None, alias="createdAt")
+
+
 class RunRequest(BaseModel):
     task: str
     crew: CrewIn
@@ -52,6 +63,7 @@ class RunRequest(BaseModel):
     # or absent RunRequest.llm_overrides entirely => that agent uses its stored
     # backend/model with no api_key/base_url override (env-var backends only).
     llm_overrides: dict[str, LlmOverrideIn] | None = Field(default=None, alias="llmOverrides")
+    memories: list[MemoryIn] | None = None
 
 
 class RunAcceptedResponse(BaseModel):

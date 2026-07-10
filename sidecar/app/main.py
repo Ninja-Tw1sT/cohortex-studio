@@ -87,14 +87,14 @@ def run(req: RunRequest, _auth: None = Depends(require_shared_key)) -> RunAccept
     """Validate the crew definition, then start it running in a background thread and
     return a run_id immediately. Poll /runs/{run_id} or /runs/{run_id}/events for progress."""
     try:
-        build_crew(req.crew, req.llm_overrides)  # fail fast on a bad definition before starting a thread
+        build_crew(req.crew, req.llm_overrides, req.memories)  # fail fast on a bad definition before starting a thread
     except Exception as e:  # noqa: BLE001
         # e is a pydantic/ValueError message describing the bad definition (missing
         # agent, unknown backend name, etc.) — never echoes a submitted api_key value.
         log.warning("invalid crew definition: %s", e)
         raise HTTPException(status_code=400, detail=f"invalid crew definition: {e}") from e
 
-    run_id = runner.start_run(req.crew, req.task, req.llm_overrides)
+    run_id = runner.start_run(req.crew, req.task, req.llm_overrides, req.memories)
     return RunAcceptedResponse(run_id=run_id)
 
 

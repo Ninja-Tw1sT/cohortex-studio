@@ -10,6 +10,7 @@ const crewSchema = new mongoose.Schema(
     agentNames: { type: [String], default: [] },
     supervisorName: { type: String, default: null },
     maxRounds: { type: Number, default: 4, min: 1, max: 20 },
+    maxHandoffChars: { type: Number, default: null, min: 100 },
   },
   { timestamps: true }
 );

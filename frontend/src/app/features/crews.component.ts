@@ -57,6 +57,11 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
         </div>
       </div>
 
+      <div *ngIf="draft.topology === 'sequential'"><label>Max handoff chars</label>
+        <input type="number" min="100" [(ngModel)]="draft.maxHandoffChars" placeholder="unlimited" />
+        <span class="muted" style="font-size:11px">truncate context passed between agents (leave blank for unlimited)</span>
+      </div>
+
       <label>Agents {{ draft.topology === 'sequential' ? '(run in this order)' : '' }}</label>
       <div class="checks">
         <label *ngFor="let a of agents">
@@ -96,7 +101,7 @@ export class CrewsComponent implements OnInit {
   }
 
   blank() {
-    return { name: '', topology: 'sequential' as Topology, agentNames: [] as string[], supervisorName: null as string | null, maxRounds: 4 };
+    return { name: '', topology: 'sequential' as Topology, agentNames: [] as string[], supervisorName: null as string | null, maxRounds: 4, maxHandoffChars: null as number | null };
   }
 
   reset() { this.draft = this.blank(); this.error = ''; }
@@ -116,6 +121,7 @@ export class CrewsComponent implements OnInit {
       name: d.name!, topology: d.topology as Topology, agentNames: d.agentNames,
       supervisorName: d.topology === 'supervisor' ? d.supervisorName ?? null : null,
       maxRounds: Number(d.maxRounds ?? 4),
+      maxHandoffChars: d.topology === 'sequential' && d.maxHandoffChars ? Number(d.maxHandoffChars) : null,
     };
     const req = d.id ? this.api.updateCrew(d.id, body) : this.api.createCrew(body);
     req.subscribe({ next: () => { this.reset(); this.load(); }, error: (e) => (this.error = errMsg(e)) });

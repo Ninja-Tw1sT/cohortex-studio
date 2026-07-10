@@ -39,6 +39,7 @@ async function buildSidecarPayload(crew) {
     name: crew.name,
     topology: crew.topology,
     maxRounds: crew.maxRounds,
+    maxHandoffChars: crew.maxHandoffChars || undefined,
     supervisor: crew.supervisorName ? toProfile(byName[crew.supervisorName]) : null,
     agents: crew.agentNames.map((n) => toProfile(byName[n])),
   };

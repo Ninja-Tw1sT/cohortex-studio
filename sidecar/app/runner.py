@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .crew_builder import build_crew
-from .schemas import AgentResultOut, CrewIn, CrewResultOut, LlmOverrideIn
+from .schemas import AgentResultOut, CrewIn, CrewResultOut, LlmOverrideIn, MemoryIn
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cohortex-run")
 
@@ -66,10 +66,11 @@ def _to_result_out(result) -> CrewResultOut:
 
 
 def _execute(run_id: str, crew_in: CrewIn, task: str,
-              llm_overrides: dict[str, LlmOverrideIn] | None = None) -> None:
+              llm_overrides: dict[str, LlmOverrideIn] | None = None,
+              memories: list[MemoryIn] | None = None) -> None:
     state = _REGISTRY[run_id]
     try:
-        crew = build_crew(crew_in, llm_overrides)
+        crew = build_crew(crew_in, llm_overrides, memories)
         for a in crew.agents:
             _wrap_agent_for_events(a, state)
         if crew.supervisor:
@@ -87,11 +88,12 @@ def _execute(run_id: str, crew_in: CrewIn, task: str,
 
 
 def start_run(crew_in: CrewIn, task: str,
-               llm_overrides: dict[str, LlmOverrideIn] | None = None) -> str:
+               llm_overrides: dict[str, LlmOverrideIn] | None = None,
+               memories: list[MemoryIn] | None = None) -> str:
     run_id = uuid.uuid4().hex
     with _REGISTRY_LOCK:
         _REGISTRY[run_id] = RunState()
-    _EXECUTOR.submit(_execute, run_id, crew_in, task, llm_overrides)
+    _EXECUTOR.submit(_execute, run_id, crew_in, task, llm_overrides, memories)
     return run_id
 
 

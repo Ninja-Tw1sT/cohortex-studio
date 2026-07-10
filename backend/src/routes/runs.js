@@ -2,6 +2,7 @@ const express = require("express");
 const { BACKENDS: KNOWN_LLM_BACKENDS } = require("../models/Agent");
 const Crew = require("../models/Crew");
 const Run = require("../models/Run");
+const RunMemory = require("../models/RunMemory");
 const asyncHandler = require("../util/asyncHandler");
 const { buildSidecarPayload } = require("../services/crewPayload");
 const sidecar = require("../services/sidecarClient");
@@ -108,8 +109,14 @@ router.post("/", runLimiter, asyncHandler(async (req, res) => {
     startedAt: new Date(),
   }); // no llmOverrides field here or in the schema - never persisted to Mongo
 
+  const memories = await RunMemory.find({ crewName: crew.name })
+    .sort({ createdAt: -1 }).limit(3).lean();
+  const memoryPayload = memories.length
+    ? memories.map(m => ({ summary: m.summary, task: m.task, createdAt: m.createdAt }))
+    : undefined;
+
   try {
-    const { run_id } = await sidecar.startRun(payload, task, llmOverrides);
+    const { run_id } = await sidecar.startRun(payload, task, llmOverrides, memoryPayload);
     run.sidecarRunId = run_id;
     await run.save();
   } catch (e) {
@@ -203,6 +210,13 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
         run.error = s.error ?? run.error;
         run.finishedAt = new Date();
         await run.save();
+        if (ev.status === "done" && s.result?.output) {
+          RunMemory.create({
+            crewName: run.crewName,
+            summary: s.result.output.slice(0, 500),
+            task: run.task,
+          }).catch(() => {});
+        }
       } catch {
         /* best-effort persist */
       }

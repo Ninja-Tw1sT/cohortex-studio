@@ -6,7 +6,7 @@ import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
 import { RunStreamService } from '../core/run-stream.service';
-import { Agent, Crew, LlmConfig, Run, RunStep } from '../core/models';
+import { Agent, Crew, LlmConfig, Run, RunStep, Usage } from '../core/models';
 
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 
@@ -68,11 +68,19 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <div class="step" *ngFor="let s of steps">
         <div class="who">{{ s.agent }}</div>
         <div>{{ s.output }}</div>
+        <div class="usage" *ngIf="usageOf(s) as u">
+          <span class="badge">{{ u.prompt_tokens }}p</span>
+          <span class="badge">{{ u.completion_tokens }}c</span>
+          <span class="badge cyan">{{ u.total_tokens }} tok</span>
+        </div>
       </div>
       <div class="step muted" *ngIf="running && !steps.length">// waiting for the first agent…</div>
       <div class="step final" *ngIf="finalOutput">
         <div class="who" style="color:var(--cyan)">FINAL</div>
         <div>{{ finalOutput }}</div>
+        <div class="usage" *ngIf="totalUsage() as t">
+          Total: {{ t.prompt_tokens }}p + {{ t.completion_tokens }}c = {{ t.total_tokens }} tokens
+        </div>
       </div>
     </div>
 
@@ -135,6 +143,21 @@ export class RunsComponent implements OnInit {
     return this.crewMembers.every((m) => !!this.assignments[m.name]);
   }
 
+  usageOf(s: RunStep): Usage | null {
+    const u = s.meta?.['usage'];
+    return u ? (u as Usage) : null;
+  }
+
+  totalUsage(): Usage | null {
+    const usages = this.steps.map((s) => this.usageOf(s)).filter((u): u is Usage => !!u);
+    if (!usages.length) return null;
+    return {
+      prompt_tokens: usages.reduce((s, u) => s + (u.prompt_tokens || 0), 0),
+      completion_tokens: usages.reduce((s, u) => s + (u.completion_tokens || 0), 0),
+      total_tokens: usages.reduce((s, u) => s + (u.total_tokens || 0), 0),
+    };
+  }
+
   run() {
     this.error = '';
     this.steps = [];
@@ -161,7 +184,7 @@ export class RunsComponent implements OnInit {
   private listen(runId: string) {
     this.streamer.stream(runId).subscribe({
       next: (ev) => {
-        if (ev.type === 'step') this.steps.push({ agent: ev.agent, output: ev.output });
+        if (ev.type === 'step') this.steps.push({ agent: ev.agent, output: ev.output, meta: ev.meta });
         else if (ev.type === 'done') { this.finalOutput = ev.output; this.status = 'done'; }
         else if (ev.type === 'failed') { this.error = ev.message; this.status = 'error'; }
       },

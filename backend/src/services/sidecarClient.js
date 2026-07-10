@@ -4,11 +4,15 @@ const base = () => process.env.SIDECAR_URL || "http://localhost:8000";
 const authHeaders = () =>
   process.env.SIDECAR_SHARED_KEY ? { "X-Sidecar-Key": process.env.SIDECAR_SHARED_KEY } : {};
 
-async function startRun(crewPayload, task, llmOverrides) {
+async function startRun(crewPayload, task, llmOverrides, memories) {
   const res = await fetch(`${base()}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ task, crew: crewPayload, llmOverrides: llmOverrides || undefined }),
+    body: JSON.stringify({
+      task, crew: crewPayload,
+      llmOverrides: llmOverrides || undefined,
+      memories: memories || undefined,
+    }),
   });
   if (!res.ok) throw new Error(`sidecar /run ${res.status}: ${await res.text()}`);
   return res.json(); // { run_id }

@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/angular-19-00f5ff?style=for-the-badge&logo=angular&logoColor=0b0714" alt="Angular 19">
   <img src="https://img.shields.io/badge/express-mongodb-ff00cc?style=for-the-badge&logo=express&logoColor=0b0714" alt="Express + MongoDB">
   <img src="https://img.shields.io/badge/sidecar-fastapi-39ff14?style=for-the-badge&logo=fastapi&logoColor=0b0714" alt="FastAPI sidecar">
+  <img src="https://img.shields.io/github/actions/workflow/status/Ninja-Tw1sT/cohortex-studio/ci.yml?style=for-the-badge&label=CI&color=39ff14" alt="CI">
   <img src="https://img.shields.io/badge/license-MIT-8a5cff?style=for-the-badge" alt="MIT">
   <img src="https://img.shields.io/badge/local--first-Ollama-00f5ff?style=for-the-badge" alt="local-first">
 </p>
@@ -103,6 +104,21 @@ Open `http://localhost:4200`, pick the seeded `research_pipeline` crew, mode **r
 run it to see the full step stream with no LLM calls. Switch to **live** (with Ollama running
 and a model pulled) to watch a real crew execute.
 
+## Bring your own key (BYOK)
+The public demo at cohortex-studio.web.app runs with `LIVE_RUNS_ENABLED=false` — no LLM
+keys on the server, zero ongoing cost. Visitors who want a live run add their own API
+credentials in the **LLM Config** page (stored in browser localStorage only), assign one to
+each agent in the crew, and the keys are sent per-request to the sidecar, used once, and
+never stored in MongoDB or logged anywhere server-side.
+
+## Token efficiency
+Every LLM backend captures per-call token usage, which flows through the step events into the
+live run view as per-step and total token counts. Sequential crews support `maxHandoffChars` to
+truncate inter-agent context and bound token growth. The Anthropic backend uses prompt caching
+(`cache_control: ephemeral`) so supervisor loops avoid re-tokenizing the same system prompt.
+Completed runs are summarized and stored as "run memories" — the last 3 are injected as context
+for future runs on the same crew, enabling cross-run learning without replaying full transcripts.
+
 ## Security
 No secrets in code or config. Backend and sidecar each read their own gitignored `.env`
 (`backend/.env.example`, `sidecar/.env.example`). The sidecar accepts an optional
@@ -120,9 +136,14 @@ cd sidecar  && pytest       # FastAPI TestClient, fake Cohortex backend
 ```
 
 ## Roadmap
-- **Auth** — Firebase Auth on the frontend + backend middleware, scoping agents/crews/runs
-  to a signed-in user instead of the shared demo namespace (`ownerId: null`).
-- **Deploy** — Firebase Hosting (frontend), Cloud Run (backend + sidecar), Atlas (MongoDB).
+- [x] **Auth** — Firebase Auth + backend middleware, scoping data to signed-in users
+- [x] **Deploy** — Firebase Hosting + Cloud Run + Atlas ($0/month free tier)
+- [x] **BYOK** — per-agent visitor-supplied LLM credentials (never persisted)
+- [x] **Token accounting** — per-step and total usage in the live run view
+- [x] **Context truncation** — `maxHandoffChars` bounds inter-agent context in sequential crews
+- [x] **Prompt caching** — Anthropic `cache_control` for supervisor loop efficiency
+- [x] **Run memory** — cross-run learning via MongoDB-backed summaries
+- [x] **CI** — GitHub Actions running all three test suites on push
 
 ## License
 MIT © Ryan Seibert.

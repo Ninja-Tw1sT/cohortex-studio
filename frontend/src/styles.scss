@@ -114,6 +114,7 @@ th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spaci
   background: var(--bg-2); border-radius: 0 6px 6px 0;
 }
 .step .who { color: var(--green); font-weight: 700; }
+.step .usage { margin-top: 6px; display: flex; gap: 6px; font-size: 11px; }
 .final { border-left-color: var(--cyan); }
 
 .checks { display: flex; flex-wrap: wrap; gap: 8px; }

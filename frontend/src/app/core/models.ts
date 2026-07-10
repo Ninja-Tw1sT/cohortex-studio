@@ -39,6 +39,13 @@ export interface Crew {
   agentNames: string[];
   supervisorName: string | null;
   maxRounds: number;
+  maxHandoffChars: number | null;
+}
+
+export interface Usage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
 }
 
 export interface RunStep {
