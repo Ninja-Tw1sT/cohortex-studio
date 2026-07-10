@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Agent, Crew, LlmConfig, Run } from './models';
+import { Agent, Crew, LlmConfig, Run, Tool } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -15,6 +15,12 @@ export class ApiService {
   createAgent(a: Partial<Agent>): Observable<Agent> { return this.http.post<Agent>(`${this.base}/agents`, a); }
   updateAgent(id: string, a: Partial<Agent>): Observable<Agent> { return this.http.put<Agent>(`${this.base}/agents/${id}`, a); }
   deleteAgent(id: string): Observable<unknown> { return this.http.delete(`${this.base}/agents/${id}`); }
+
+  // tools (Tool Shed)
+  tools(): Observable<Tool[]> { return this.http.get<Tool[]>(`${this.base}/tools`); }
+  createTool(t: Partial<Tool>): Observable<Tool> { return this.http.post<Tool>(`${this.base}/tools`, t); }
+  updateTool(id: string, t: Partial<Tool>): Observable<Tool> { return this.http.put<Tool>(`${this.base}/tools/${id}`, t); }
+  deleteTool(id: string): Observable<unknown> { return this.http.delete(`${this.base}/tools/${id}`); }
 
   // crews
   crews(): Observable<Crew[]> { return this.http.get<Crew[]>(`${this.base}/crews`); }

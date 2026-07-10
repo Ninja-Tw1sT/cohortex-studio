@@ -16,6 +16,9 @@ const agentSchema = new mongoose.Schema(
     systemPrompt: { type: String, default: "" },
     vaults: { type: [String], default: [] },
     tools: { type: [String], default: [] },
+    // Assigned once on creation (see routes/agents.js) so this agent's runs,
+    // tool checkboxes, etc. stay visually traceable to it. Hex color.
+    color: { type: String, default: null, match: /^#[0-9a-fA-F]{6}$/ },
   },
   { timestamps: true }
 );

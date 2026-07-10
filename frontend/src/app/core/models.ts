@@ -2,6 +2,13 @@ export const BACKENDS = ['ollama', 'openai', 'anthropic', 'gemini', 'grok'] as c
 export const TOPOLOGIES = ['single', 'sequential', 'supervisor'] as const;
 export type Topology = (typeof TOPOLOGIES)[number];
 
+// The names cohortex's ReAct loop always resolves via its global registry (see
+// cohortex/cohortex/tools/__init__.py) — a "builtin" kind Tool Shed entry must
+// use one of these.
+export const BUILTIN_TOOLS = ['calculator', 'word_count'] as const;
+export const TOOL_KINDS = ['builtin', 'http'] as const;
+export const HTTP_METHODS = ['GET', 'POST'] as const;
+
 // A visitor's own LLM config for live runs — kept in the browser only (see
 // LlmConfigService), sent per-request, never persisted server-side.
 export interface LlmConfig {
@@ -30,6 +37,22 @@ export interface Agent {
   systemPrompt: string;
   vaults: string[];
   tools: string[];
+  // Assigned on creation (auto-picked server-side unless overridden) so this
+  // agent's runs and tool assignments stay visually traceable to it.
+  color: string | null;
+}
+
+// A Tool Shed catalog entry — either a cataloged instance of a builtin tool,
+// or a user-defined tool that calls out to a URL ("http" kind). Assignable to
+// agents by `name`.
+export interface Tool {
+  id?: string;
+  name: string;
+  kind: (typeof TOOL_KINDS)[number];
+  description: string;
+  method?: (typeof HTTP_METHODS)[number] | null;
+  urlTemplate?: string;
+  headers?: Record<string, string>;
 }
 
 export interface Crew {

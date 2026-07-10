@@ -1,11 +1,12 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { Agent, BACKENDS } from '../core/models';
+import { Agent, BACKENDS, Tool } from '../core/models';
 
-interface Draft extends Partial<Agent> { toolsStr?: string; vaultsStr?: string; }
+interface Draft extends Partial<Agent> { vaultsStr?: string; }
 
 const split = (s?: string) => (s || '').split(',').map((x) => x.trim()).filter(Boolean);
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
@@ -13,7 +14,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 @Component({
   selector: 'app-agents',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="card">
       <h2>Agents</h2>
@@ -21,7 +22,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <table>
         <tr><th>Name</th><th>Role</th><th>Backend</th><th>Tools</th><th></th></tr>
         <tr *ngFor="let a of agents">
-          <td>{{ a.name }}</td>
+          <td><span class="swatch" [style.background]="a.color" [style.color]="a.color"></span>{{ a.name }}</td>
           <td class="muted">{{ a.role }}</td>
           <td><span class="badge cyan">{{ a.backend || 'default' }}</span></td>
           <td class="muted">{{ a.tools.join(', ') || '—' }}</td>
@@ -38,7 +39,10 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
     </div>
 
     <div class="card" *ngIf="auth.user(); else signInPrompt">
-      <h3>{{ draft.id ? 'Edit agent' : 'New agent' }}</h3>
+      <h3>
+        <span class="swatch" *ngIf="draft.color" [style.background]="draft.color" [style.color]="draft.color"></span>
+        {{ draft.id ? 'Edit agent' : 'New agent' }}
+      </h3>
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
         <div><label>Name</label><input [(ngModel)]="draft.name" placeholder="researcher" /></div>
@@ -49,6 +53,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           </select>
         </div>
         <div><label>Model (optional)</label><input [(ngModel)]="draft.model" placeholder="phi3:mini" /></div>
+        <div *ngIf="draft.id"><label>Color</label><input type="color" [(ngModel)]="draft.color" /></div>
       </div>
       <label>Role</label><input [(ngModel)]="draft.role" placeholder="Research Analyst" />
       <label>Goal</label><input [(ngModel)]="draft.goal" placeholder="list the key facts about the topic" />
@@ -56,8 +61,16 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <div class="row">
         <div><label>Temperature</label><input type="number" step="0.1" min="0" max="2" [(ngModel)]="draft.temperature" /></div>
         <div><label>Max tokens (optional)</label><input type="number" [(ngModel)]="draft.maxTokens" /></div>
-        <div><label>Tools (comma-sep)</label><input [(ngModel)]="draft.toolsStr" placeholder="calculator" /></div>
         <div><label>Vaults (comma-sep)</label><input [(ngModel)]="draft.vaultsStr" placeholder="demo_kb" /></div>
+      </div>
+      <label>Tools</label>
+      <div class="checks">
+        <label *ngFor="let t of tools">
+          <input type="checkbox" [checked]="hasTool(t.name)" (change)="toggleTool(t.name)"
+                 [style.accentColor]="draft.color || '#8a5cff'" />
+          {{ t.name }}
+        </label>
+        <span *ngIf="!tools.length" class="muted">No tools cataloged yet — add one in <a routerLink="/tool-shed">Tool Shed</a>.</span>
       </div>
       <div style="margin-top:14px; display:flex; gap:8px">
         <button class="primary" (click)="save()" [disabled]="!draft.name">Save</button>
@@ -77,6 +90,7 @@ export class AgentsComponent implements OnInit {
   auth = inject(AuthService);
   backends = BACKENDS;
   agents: Agent[] = [];
+  tools: Tool[] = [];
   draft: Draft = this.blank();
   error = '';
 
@@ -84,16 +98,24 @@ export class AgentsComponent implements OnInit {
 
   load() {
     this.api.agents().subscribe({ next: (a) => (this.agents = a), error: (e) => (this.error = errMsg(e)) });
+    this.api.tools().subscribe({ next: (t) => (this.tools = t) });
   }
 
   blank(): Draft {
-    return { name: '', role: '', goal: '', backend: null, model: null, temperature: 0.3, maxTokens: null, systemPrompt: '', toolsStr: '', vaultsStr: '' };
+    return { name: '', role: '', goal: '', backend: null, model: null, temperature: 0.3, maxTokens: null, systemPrompt: '', tools: [], vaultsStr: '', color: null };
   }
 
   reset() { this.draft = this.blank(); this.error = ''; }
 
   edit(a: Agent) {
-    this.draft = { ...a, toolsStr: (a.tools || []).join(', '), vaultsStr: (a.vaults || []).join(', ') };
+    this.draft = { ...a, tools: [...(a.tools || [])], vaultsStr: (a.vaults || []).join(', ') };
+  }
+
+  hasTool(name: string) { return (this.draft.tools || []).includes(name); }
+  toggleTool(name: string) {
+    const set = (this.draft.tools ||= []);
+    const i = set.indexOf(name);
+    if (i >= 0) set.splice(i, 1); else set.push(name);
   }
 
   save() {
@@ -104,8 +126,11 @@ export class AgentsComponent implements OnInit {
       temperature: Number(d.temperature ?? 0.3),
       maxTokens: d.maxTokens ? Number(d.maxTokens) : null,
       systemPrompt: d.systemPrompt || '',
-      tools: split(d.toolsStr), vaults: split(d.vaultsStr),
+      tools: d.tools || [], vaults: split(d.vaultsStr),
     };
+    // Color is only sent when editing an existing agent (where one is already
+    // assigned) — creation always lets the server auto-pick from the palette.
+    if (d.id && d.color) body.color = d.color;
     const req = d.id ? this.api.updateAgent(d.id, body) : this.api.createAgent(body);
     req.subscribe({ next: () => { this.reset(); this.load(); }, error: (e) => (this.error = errMsg(e)) });
   }

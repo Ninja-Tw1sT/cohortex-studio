@@ -12,6 +12,8 @@ const { connectDb, disconnectDb } = require("../src/config/db");
 const Agent = require("../src/models/Agent");
 const Crew = require("../src/models/Crew");
 const Run = require("../src/models/Run");
+const Tool = require("../src/models/Tool");
+const { PALETTE } = require("../src/util/palette");
 
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/cohortex_studio";
 
@@ -25,6 +27,7 @@ const AGENTS = [
     temperature: 0.2,
     tools: ["calculator"],
     vaults: [],
+    color: PALETTE[0],
   },
   {
     name: "writer",
@@ -35,6 +38,7 @@ const AGENTS = [
     temperature: 0.5,
     tools: [],
     vaults: [],
+    color: PALETTE[1],
   },
   {
     name: "critic",
@@ -45,6 +49,7 @@ const AGENTS = [
     temperature: 0.3,
     tools: [],
     vaults: [],
+    color: PALETTE[2],
   },
   {
     name: "planner",
@@ -55,6 +60,7 @@ const AGENTS = [
     temperature: 0.2,
     tools: [],
     vaults: [],
+    color: PALETTE[3],
   },
   {
     name: "coder",
@@ -63,8 +69,9 @@ const AGENTS = [
     backend: "ollama",
     model: "qwen2.5-coder:7b",
     temperature: 0.1,
-    tools: ["calculator"],
+    tools: ["calculator", "word_count"],
     vaults: [],
+    color: PALETTE[4],
   },
   {
     name: "summarizer",
@@ -73,9 +80,16 @@ const AGENTS = [
     backend: "ollama",
     model: "phi3:mini",
     temperature: 0.3,
-    tools: [],
+    tools: ["word_count"],
     vaults: [],
+    color: PALETTE[5],
   },
+];
+
+// The Tool Shed catalog — every agent's `tools` above must name one of these.
+const TOOLS = [
+  { name: "calculator", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
+  { name: "word_count", description: "Count the words in a string." },
 ];
 
 const CREWS = [
@@ -201,6 +215,14 @@ async function upsertAgent(a) {
   );
 }
 
+async function upsertTool(t) {
+  return Tool.findOneAndUpdate(
+    { ownerId: null, name: t.name },
+    { ownerId: null, ...t },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+}
+
 async function upsertCrew(c) {
   return Crew.findOneAndUpdate(
     { ownerId: null, name: c.name },
@@ -227,6 +249,9 @@ async function seedReplayRun(r) {
 
 async function main() {
   await connectDb(MONGODB_URI);
+
+  const tools = await Promise.all(TOOLS.map(upsertTool));
+  console.log(`tools: upserted ${tools.length} (${tools.map((t) => t.name).join(", ")})`);
 
   const agents = await Promise.all(AGENTS.map(upsertAgent));
   console.log(`agents: upserted ${agents.length} (${agents.map((a) => a.name).join(", ")})`);

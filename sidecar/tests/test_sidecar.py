@@ -302,6 +302,81 @@ def test_camelcase_aliases_accepted():
     assert data["status"] == "done"
 
 
+def test_run_with_dynamic_http_tool_end_to_end(monkeypatch):
+    import cohortex.tools as tools_mod
+    monkeypatch.setattr(tools_mod.socket, "getaddrinfo",
+                         lambda host, port: [(None, None, None, None, ("93.184.216.34", 0))])
+
+    calls = []
+
+    class FakeResponse:
+        text = "72F and sunny"
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, params=None, headers=None, timeout=None, follow_redirects=None):
+        calls.append(url)
+        return FakeResponse()
+
+    import httpx as real_httpx
+    monkeypatch.setattr(real_httpx, "get", fake_get)
+
+    ScriptedBackend._responses_by_role["default"] = [
+        '{"tool": "weather", "input": "paris"}',
+        '{"answer": "72F and sunny"}',
+    ]
+
+    body = {
+        "task": "what's the weather in paris?",
+        "crew": {
+            "name": "weather_team",
+            "topology": "single",
+            "agents": [_agent("forecaster", backend="test-scripted", tools=["weather"])],
+            "toolDefs": [
+                {"name": "weather", "kind": "http", "method": "GET",
+                 "urlTemplate": "https://api.example.com/weather?city={input}"},
+            ],
+        },
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    assert data["result"]["output"] == "72F and sunny"
+    assert calls == ["https://api.example.com/weather?city=paris"]
+
+
+def test_run_with_builtin_tool_def_is_a_noop_and_still_works():
+    # A "builtin" toolDefs entry has nothing to build (the name already resolves
+    # via cohortex's global registry) — just shouldn't break the run.
+    body = {
+        "task": "x",
+        "crew": {
+            "name": "calc_team",
+            "topology": "single",
+            "agents": [_agent("a", tools=["calculator"])],
+            "toolDefs": [{"name": "calculator", "kind": "builtin"}],
+        },
+    }
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+
+
+def test_run_rejects_unsafe_tool_def_with_400():
+    body = {
+        "task": "x",
+        "crew": {
+            "name": "bad_tool_team",
+            "topology": "single",
+            "agents": [_agent("a", tools=["fetch"])],
+            "toolDefs": [
+                {"name": "fetch", "kind": "http", "method": "GET",
+                 "urlTemplate": "http://169.254.169.254/latest/meta-data/"},
+            ],
+        },
+    }
+    r = client.post("/run", json=body)
+    assert r.status_code == 400
+
+
 def test_mcp_run_crew_tool():
     crew = {
         "name": "solo",

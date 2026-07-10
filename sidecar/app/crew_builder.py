@@ -9,8 +9,9 @@ from __future__ import annotations
 from cohortex.orchestrator import Crew
 from cohortex.profiles import AgentProfile
 from cohortex.runtime import build_agent
+from cohortex.tools import make_dynamic_tool
 
-from .schemas import AgentProfileIn, CrewIn, LlmOverrideIn, MemoryIn
+from .schemas import AgentProfileIn, CrewIn, LlmOverrideIn, MemoryIn, ToolDefIn
 
 
 def _to_profile(p: AgentProfileIn, override: LlmOverrideIn | None = None,
@@ -41,14 +42,31 @@ def _format_memories(memories: list[MemoryIn]) -> str:
     return "\n".join(lines)
 
 
+def _build_dynamic_tools(tool_defs: list[ToolDefIn]) -> dict[str, dict]:
+    """Fresh per build_crew() call — never cached or shared across requests, so
+    concurrent runs can't stomp each other's same-named tool. See
+    cohortex.tools.ToolRegistry."""
+    extra: dict[str, dict] = {}
+    for t in tool_defs:
+        entry = make_dynamic_tool(
+            t.name, t.description, t.kind,
+            method=t.method, url_template=t.url_template, headers=t.headers,
+        )
+        if entry:
+            extra[t.name] = entry
+    return extra
+
+
 def build_crew(crew_in: CrewIn, llm_overrides: dict[str, LlmOverrideIn] | None = None,
                memories: list[MemoryIn] | None = None) -> Crew:
     overrides = llm_overrides or {}
     memory_context = _format_memories(memories) if memories else ""
-    agents = [build_agent(_to_profile(p, overrides.get(p.name), memory_context))
+    dynamic_tools = _build_dynamic_tools(crew_in.tool_defs)
+    agents = [build_agent(_to_profile(p, overrides.get(p.name), memory_context), dynamic_tools=dynamic_tools)
               for p in crew_in.agents]
     supervisor = (
-        build_agent(_to_profile(crew_in.supervisor, overrides.get(crew_in.supervisor.name), memory_context))
+        build_agent(_to_profile(crew_in.supervisor, overrides.get(crew_in.supervisor.name), memory_context),
+                    dynamic_tools=dynamic_tools)
         if crew_in.supervisor else None
     )
     return Crew(

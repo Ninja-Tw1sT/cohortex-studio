@@ -5,6 +5,7 @@ const health = require("./routes/health");
 const agents = require("./routes/agents");
 const crews = require("./routes/crews");
 const runs = require("./routes/runs");
+const tools = require("./routes/tools");
 const errorHandler = require("./middleware/errorHandler");
 const { optionalAuth } = require("./middleware/auth");
 const { apiLimiter } = require("./middleware/rateLimit");
@@ -27,6 +28,7 @@ function createApp() {
   app.use("/api/agents", agents);
   app.use("/api/crews", crews);
   app.use("/api/runs", runs);
+  app.use("/api/tools", tools);
 
   app.use((req, res) => res.status(404).json({ error: `not found: ${req.method} ${req.path}` }));
   app.use(errorHandler);

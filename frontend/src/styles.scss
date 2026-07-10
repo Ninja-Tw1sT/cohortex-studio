@@ -120,3 +120,15 @@ th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spaci
 .checks { display: flex; flex-wrap: wrap; gap: 8px; }
 .checks label { display: inline-flex; align-items: center; gap: 6px; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); font-size: 13px; }
 .checks input[type='checkbox'] { width: auto; }
+
+/* ── Agent color swatch + tool "used by" chips ──────────────── */
+.swatch {
+  display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle;
+  box-shadow: 0 0 6px currentColor;
+}
+.chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px;
+  border: 1px solid var(--border); background: var(--bg-2);
+}

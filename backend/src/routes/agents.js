@@ -2,12 +2,13 @@ const express = require("express");
 const Agent = require("../models/Agent");
 const asyncHandler = require("../util/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
+const { nextColor } = require("../util/palette");
 
 const router = express.Router();
 
 const FIELDS = [
   "name", "role", "goal", "backend", "model",
-  "temperature", "maxTokens", "systemPrompt", "vaults", "tools",
+  "temperature", "maxTokens", "systemPrompt", "vaults", "tools", "color",
 ];
 const pick = (body) =>
   Object.fromEntries(FIELDS.filter((f) => body[f] !== undefined).map((f) => [f, body[f]]));
@@ -27,7 +28,12 @@ router.get("/:id", asyncHandler(async (req, res) => {
 }));
 
 router.post("/", requireAuth, asyncHandler(async (req, res) => {
-  const doc = await Agent.create({ ...pick(req.body), ownerId: req.user.uid });
+  const fields = pick(req.body);
+  if (!fields.color) {
+    const existingCount = await Agent.countDocuments({ ownerId: req.user.uid });
+    fields.color = nextColor(existingCount);
+  }
+  const doc = await Agent.create({ ...fields, ownerId: req.user.uid });
   res.status(201).json(doc);
 }));
 

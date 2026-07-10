@@ -5,6 +5,7 @@ const createApp = require("../src/app");
 const Agent = require("../src/models/Agent");
 const Crew = require("../src/models/Crew");
 const Run = require("../src/models/Run");
+const Tool = require("../src/models/Tool");
 const { setup, teardown, clear } = require("./helpers");
 
 const app = createApp();
@@ -106,6 +107,48 @@ describe("runs (live)", () => {
     const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
     expect(r.status).toBe(400);
     expect(r.body.error).toMatch(/unknown agents/);
+  });
+
+  test("payload's toolDefs includes the http tool an agent references, with headers as a plain object", async () => {
+    await Agent.create({
+      name: "forecaster", role: "Forecaster", goal: "g", backend: "ollama",
+      tools: ["weather"], ownerId: null,
+    });
+    await Tool.create({
+      name: "weather", kind: "http", description: "look up weather", method: "GET",
+      urlTemplate: "https://api.example.com/weather?city={input}",
+      headers: { "X-Api-Key": "demo-key" }, ownerId: null,
+    });
+    const crew = await Crew.create({ name: "weather_team", topology: "single", agentNames: ["forecaster"] });
+
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
+    expect(r.status).toBe(201);
+    expect(calls.run.crew.toolDefs).toEqual([
+      {
+        name: "weather", kind: "http", description: "look up weather", method: "GET",
+        urlTemplate: "https://api.example.com/weather?city={input}",
+        headers: { "X-Api-Key": "demo-key" },
+      },
+    ]);
+  });
+
+  test("an agent's own http tool takes precedence over a same-named demo catalog entry", async () => {
+    await Agent.create({ name: "forecaster", role: "F", goal: "g", backend: "ollama", tools: ["weather"], ownerId: "u1" });
+    await Tool.create({ name: "weather", kind: "http", method: "GET", urlTemplate: "https://demo.example.com/{input}", ownerId: null });
+    await Tool.create({ name: "weather", kind: "http", method: "GET", urlTemplate: "https://mine.example.com/{input}", ownerId: "u1" });
+    const crew = await Crew.create({ name: "weather_team", topology: "single", agentNames: ["forecaster"], ownerId: "u1" });
+
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
+    expect(r.status).toBe(201);
+    expect(calls.run.crew.toolDefs[0].urlTemplate).toBe("https://mine.example.com/{input}");
+  });
+
+  test("an uncataloged tool name is simply omitted from toolDefs (no crash)", async () => {
+    const crew = await seedCrew(); // "researcher" has no tools by default
+    await Agent.findOneAndUpdate({ name: "researcher" }, { tools: ["some_deleted_tool"] });
+    const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
+    expect(r.status).toBe(201);
+    expect(calls.run.crew.toolDefs).toEqual([]);
   });
 });
 

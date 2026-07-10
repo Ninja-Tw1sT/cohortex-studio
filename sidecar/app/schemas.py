@@ -24,6 +24,20 @@ class AgentProfileIn(BaseModel):
     tools: list[str] = Field(default_factory=list)
 
 
+class ToolDefIn(BaseModel):
+    """A Tool Shed catalog entry, sent alongside the crew so the sidecar can build
+    any dynamic (non-builtin) tools an agent's `tools` list references. See
+    cohortex.tools.make_dynamic_tool."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    kind: str = "builtin"  # "builtin" | "http"
+    description: str = ""
+    method: str | None = None
+    url_template: str | None = Field(default=None, alias="urlTemplate")
+    headers: dict[str, str] | None = None
+
+
 class CrewIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -33,6 +47,7 @@ class CrewIn(BaseModel):
     max_handoff_chars: int | None = Field(default=None, alias="maxHandoffChars")
     supervisor: AgentProfileIn | None = None
     agents: list[AgentProfileIn] = Field(default_factory=list)
+    tool_defs: list[ToolDefIn] = Field(default_factory=list, alias="toolDefs")
 
 
 class LlmOverrideIn(BaseModel):

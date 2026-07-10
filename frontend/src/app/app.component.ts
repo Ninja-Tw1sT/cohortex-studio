@@ -12,6 +12,7 @@ import { AuthService } from './core/auth.service';
       <nav>
         <a routerLink="/crews" routerLinkActive="active">Crews</a>
         <a routerLink="/agents" routerLinkActive="active">Agents</a>
+        <a routerLink="/tool-shed" routerLinkActive="active">Tool Shed</a>
         <a routerLink="/runs" routerLinkActive="active">Run</a>
         <a routerLink="/llm-config" routerLinkActive="active">LLM Config</a>
       </nav>

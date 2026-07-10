@@ -1,4 +1,5 @@
 const Agent = require("../models/Agent");
+const Tool = require("../models/Tool");
 
 // Convert a stored Agent doc to the sidecar's AgentProfileIn (camelCase) shape.
 const toProfile = (a) => ({
@@ -12,6 +13,18 @@ const toProfile = (a) => ({
   systemPrompt: a.systemPrompt,
   vaults: a.vaults,
   tools: a.tools,
+});
+
+// Convert a stored Tool doc to the sidecar's ToolDefIn shape. "builtin" kind
+// entries are included too (harmless — cohortex.tools treats them as a no-op,
+// since those names already resolve via the global registry regardless).
+const toToolDef = (t) => ({
+  name: t.name,
+  kind: t.kind,
+  description: t.description || "",
+  method: t.method || undefined,
+  urlTemplate: t.urlTemplate || undefined,
+  headers: t.headers && t.headers.size ? Object.fromEntries(t.headers) : undefined,
 });
 
 // Resolve a Crew doc's agent names into full sidecar profiles, preferring the
@@ -35,6 +48,19 @@ async function buildSidecarPayload(crew) {
     throw new Error(`crew references unknown agents: ${missing.join(", ")}`);
   }
 
+  // Every tool name any resolved agent references, cataloged (Tool Shed) or
+  // not — a name with no catalog entry just sends no toolDef for it, which is
+  // fine for builtins (they work regardless) and degrades to "unknown tool"
+  // at call time for a deleted/renamed http tool.
+  const toolNames = [...new Set(Object.values(byName).flatMap((a) => a.tools || []))];
+  const toolDocs = toolNames.length
+    ? await Tool.find({ name: { $in: toolNames }, ownerId: { $in: [crew.ownerId, null] } })
+    : [];
+  const toolByName = {};
+  for (const t of toolDocs) {
+    if (!toolByName[t.name] || t.ownerId === crew.ownerId) toolByName[t.name] = t;
+  }
+
   return {
     name: crew.name,
     topology: crew.topology,
@@ -42,7 +68,8 @@ async function buildSidecarPayload(crew) {
     maxHandoffChars: crew.maxHandoffChars || undefined,
     supervisor: crew.supervisorName ? toProfile(byName[crew.supervisorName]) : null,
     agents: crew.agentNames.map((n) => toProfile(byName[n])),
+    toolDefs: Object.values(toolByName).map(toToolDef),
   };
 }
 
-module.exports = { buildSidecarPayload, toProfile };
+module.exports = { buildSidecarPayload, toProfile, toToolDef };

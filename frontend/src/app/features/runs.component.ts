@@ -39,7 +39,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           No saved credentials yet — add one in <a routerLink="/llm-config">LLM Config</a>.
         </p>
         <div class="row" *ngFor="let m of crewMembers">
-          <div><label>{{ m.name }} <span class="muted">({{ m.role }})</span></label>
+          <div><label><span class="swatch" [style.background]="m.color" [style.color]="m.color"></span>{{ m.name }} <span class="muted">({{ m.role }})</span></label>
             <select [(ngModel)]="assignments[m.name]">
               <option [ngValue]="null">— none (use server default) —</option>
               <option *ngFor="let c of llmConfig.credentials()" [ngValue]="c.id">{{ c.label }} ({{ c.backend }})</option>
@@ -65,8 +65,8 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 
     <div class="card" *ngIf="steps.length || finalOutput || running">
       <h3>Live progress</h3>
-      <div class="step" *ngFor="let s of steps">
-        <div class="who">{{ s.agent }}</div>
+      <div class="step" *ngFor="let s of steps" [style.borderLeftColor]="colorOf(s.agent)">
+        <div class="who" [style.color]="colorOf(s.agent)">{{ s.agent }}</div>
         <div>{{ s.output }}</div>
         <div class="usage" *ngIf="usageOf(s) as u">
           <span class="badge">{{ u.prompt_tokens }}p</span>
@@ -141,6 +141,10 @@ export class RunsComponent implements OnInit {
 
   allCovered() {
     return this.crewMembers.every((m) => !!this.assignments[m.name]);
+  }
+
+  colorOf(agentName: string): string | null {
+    return this.agents.find((a) => a.name === agentName)?.color ?? null;
   }
 
   usageOf(s: RunStep): Usage | null {
