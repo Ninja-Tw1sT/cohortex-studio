@@ -131,6 +131,14 @@ to add one, no code changes required for any of them:
 All three just pre-fill the same form — Save always goes through the same validation, so a
 generated or templated proposal gets no more trust than one typed by hand.
 
+Every catalog entry also has a **Schema** view — a deterministic (no LLM call) reshape of that
+tool into OpenAI's function-calling schema, Anthropic's `tools` schema, or Gemini's
+`function_declaration`. Cohortex's agents never consume these — its ReAct loop is prompt-based,
+not provider-native tool-calling, which is exactly what makes the same tool definition work
+identically across all five backends (including local models with no native tool-calling support
+at all). The Schema view exists for the opposite direction: taking a tool defined here and
+calling it from a provider's own native tools API somewhere else.
+
 ## Crew topology diagram
 Picking a crew on the Run page draws its topology live — agents as nodes in each agent's own
 assigned color (the same swatch used on the Agents/Tool Shed pages), arrows showing hand-off

@@ -21,6 +21,9 @@ dist/
 **/dist/
 .angular/
 
+# Firebase CLI local cache
+.firebase/
+
 # OS / editor
 .DS_Store
 Thumbs.db

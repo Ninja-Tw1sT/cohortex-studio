@@ -7,6 +7,7 @@ import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
 import { Agent, BUILTIN_TOOLS, HTTP_METHODS, TOOL_KINDS, Tool } from '../core/models';
 import { TOOL_TEMPLATES, ToolTemplate } from '../core/tool-templates';
+import { SCHEMA_PROVIDERS, SchemaProvider, schemaFor } from '../core/tool-schema-export';
 
 interface Draft extends Partial<Tool> { headersStr?: string; }
 
@@ -33,29 +34,50 @@ const formatHeaders = (h?: Record<string, string>) =>
       <p class="muted">Load or generate the tools your agents can call. Assign them by name on the Agents screen.</p>
       <table>
         <tr><th>Name</th><th>Kind</th><th>Details</th><th></th></tr>
-        <tr *ngFor="let t of tools">
-          <td>
-            <span class="badge violet">{{ t.name }}</span>
-            <span class="chips" style="margin-left:8px">
-              <span class="swatch" *ngFor="let a of usedBy(t)" [title]="a.name"
-                    [style.background]="a.color" [style.color]="a.color"></span>
-            </span>
-          </td>
-          <td><span class="badge" [class.cyan]="t.kind==='http'">{{ t.kind }}</span></td>
-          <td class="muted">
-            <ng-container *ngIf="t.kind === 'http'; else builtinDesc">
-              <span class="badge">{{ t.method || 'GET' }}</span> {{ t.urlTemplate }}
-            </ng-container>
-            <ng-template #builtinDesc>{{ t.description || '—' }}</ng-template>
-          </td>
-          <td style="text-align:right">
-            <ng-container *ngIf="auth.user(); else noAccess">
-              <button class="ghost" (click)="edit(t)">Edit</button>
-              <button class="danger" (click)="remove(t)">Del</button>
-            </ng-container>
-            <ng-template #noAccess><span class="muted">—</span></ng-template>
-          </td>
-        </tr>
+        <ng-container *ngFor="let t of tools">
+          <tr>
+            <td>
+              <span class="badge violet">{{ t.name }}</span>
+              <span class="chips" style="margin-left:8px">
+                <span class="swatch" *ngFor="let a of usedBy(t)" [title]="a.name"
+                      [style.background]="a.color" [style.color]="a.color"></span>
+              </span>
+            </td>
+            <td><span class="badge" [class.cyan]="t.kind==='http'">{{ t.kind }}</span></td>
+            <td class="muted">
+              <ng-container *ngIf="t.kind === 'http'; else builtinDesc">
+                <span class="badge">{{ t.method || 'GET' }}</span> {{ t.urlTemplate }}
+              </ng-container>
+              <ng-template #builtinDesc>{{ t.description || '—' }}</ng-template>
+            </td>
+            <td style="text-align:right">
+              <button class="ghost" (click)="toggleSchema(t)">{{ schemaOpenFor === t.id ? 'Hide' : 'Schema' }}</button>
+              <ng-container *ngIf="auth.user(); else noAccess">
+                <button class="ghost" (click)="edit(t)">Edit</button>
+                <button class="danger" (click)="remove(t)">Del</button>
+              </ng-container>
+              <ng-template #noAccess><span class="muted"></span></ng-template>
+            </td>
+          </tr>
+          <tr *ngIf="schemaOpenFor === t.id">
+            <td colspan="4">
+              <div class="row" style="align-items:center">
+                <div style="flex:0 0 auto"><label>As</label>
+                  <select [(ngModel)]="schemaProvider">
+                    <option *ngFor="let p of schemaProviders" [ngValue]="p.id">{{ p.label }}</option>
+                  </select>
+                </div>
+                <button class="ghost" style="flex:0 0 auto" (click)="copySchema(t)">{{ copied ? 'Copied ✓' : 'Copy' }}</button>
+              </div>
+              <pre class="schema-block">{{ schemaJson(t) }}</pre>
+              <p class="muted" style="font-size:11px">
+                Reference only — Cohortex's agents call tools via a universal prompt-based ReAct loop, not
+                provider-native tool-calling, so nothing here is consumed by this app. Useful if you want to
+                call this same tool from a provider's native tools API elsewhere.
+              </p>
+            </td>
+          </tr>
+        </ng-container>
       </table>
       <p *ngIf="!tools.length" class="muted">No tools cataloged yet — add one below.</p>
     </div>
@@ -140,6 +162,12 @@ const formatHeaders = (h?: Record<string, string>) =>
       </div>
     </ng-template>
   `,
+  styles: [`
+    .schema-block {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px; margin-top: 8px; font-size: 11px; overflow-x: auto; color: var(--text);
+    }
+  `],
 })
 export class ToolShedComponent implements OnInit {
   private api = inject(ApiService);
@@ -148,11 +176,16 @@ export class ToolShedComponent implements OnInit {
   builtinNames = BUILTIN_TOOLS;
   kinds = TOOL_KINDS;
   methods = HTTP_METHODS;
+  schemaProviders = SCHEMA_PROVIDERS;
   templates = TOOL_TEMPLATES;
   tools: Tool[] = [];
   agents: Agent[] = [];
   draft: Draft = this.blank();
   error = '';
+
+  schemaOpenFor: string | null = null;
+  schemaProvider: SchemaProvider = 'openai';
+  copied = false;
 
   genDescription = '';
   genCredentialId: string | null = null;
@@ -168,6 +201,22 @@ export class ToolShedComponent implements OnInit {
 
   usedBy(t: Tool): Agent[] {
     return this.agents.filter((a) => a.tools.includes(t.name));
+  }
+
+  toggleSchema(t: Tool) {
+    this.schemaOpenFor = this.schemaOpenFor === t.id ? null : (t.id ?? null);
+    this.copied = false;
+  }
+
+  schemaJson(t: Tool): string {
+    return JSON.stringify(schemaFor(t, this.schemaProvider), null, 2);
+  }
+
+  copySchema(t: Tool) {
+    navigator.clipboard.writeText(this.schemaJson(t)).then(() => {
+      this.copied = true;
+      setTimeout(() => (this.copied = false), 1500);
+    });
   }
 
   blank(): Draft {
