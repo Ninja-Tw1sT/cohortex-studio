@@ -67,6 +67,23 @@ class MultiCaptureBackend:
         return f"response-from-{self.api_key or 'no-key'}"
 
 
+@register("test-streaming")
+class StreamingBackend:
+    """Implements chat_stream — proves the sidecar emits "delta" events per
+    chunk, then a final "step" event with the complete accumulated output."""
+
+    def __init__(self, model=None, **_):
+        self.model = model or "streaming"
+
+    def chat(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        return "hello streaming world"
+
+    def chat_stream(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        for chunk in ("hello ", "streaming ", "world"):
+            yield chunk
+        self.last_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+
 def _agent(name, role="Agent", backend="test-const", **overrides):
     a = {"name": name, "role": role, "goal": "do the job", "backend": backend}
     a.update(overrides)
@@ -184,6 +201,41 @@ def test_run_events_include_usage_in_meta():
     assert usage["prompt_tokens"] == 10
     assert usage["completion_tokens"] == 5
     assert usage["total_tokens"] == 15
+
+
+def test_run_emits_delta_events_before_the_final_step_event():
+    body = {
+        "task": "say hi",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo", backend="test-streaming")]},
+    }
+    run_id, data = _run_and_wait(body)
+    events_resp = client.get(f"/runs/{run_id}/events")
+    payload = events_resp.json()
+
+    deltas = [e for e in payload["events"] if e["type"] == "delta"]
+    steps = [e for e in payload["events"] if e["type"] == "step"]
+    assert [d["text"] for d in deltas] == ["hello ", "streaming ", "world"]
+    assert all(d["agent"] == "solo" for d in deltas)
+    assert len(steps) == 1
+    assert steps[0]["output"] == "hello streaming world"
+    assert steps[0]["meta"]["usage"]["total_tokens"] == 15
+    # deltas must arrive strictly before the step event they belong to
+    assert max(d["seq"] for d in deltas) < steps[0]["seq"]
+
+
+def test_run_falls_back_to_single_delta_for_a_non_streaming_backend():
+    # test-const has no chat_stream — Agent.run_stream() falls back to one
+    # delta with the whole output, so the sidecar still works unchanged.
+    body = {
+        "task": "say hi",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]},
+    }
+    run_id, data = _run_and_wait(body)
+    events_resp = client.get(f"/runs/{run_id}/events")
+    payload = events_resp.json()
+    deltas = [e for e in payload["events"] if e["type"] == "delta"]
+    assert len(deltas) == 1
+    assert deltas[0]["text"] == "hello from const backend"
 
 
 def test_run_rejects_unknown_backend_with_400():

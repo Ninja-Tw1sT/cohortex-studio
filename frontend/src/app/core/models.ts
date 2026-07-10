@@ -100,6 +100,7 @@ export interface Run {
 }
 
 export type RunEvent =
+  | { type: 'delta'; agent: string; text: string }
   | { type: 'step'; agent: string; output: string; meta?: Record<string, unknown>; seq?: number }
   | { type: 'done'; output: string }
   | { type: 'failed'; message: string };

@@ -5,9 +5,9 @@ import { RunEvent } from './models';
 
 /**
  * Consumes the Express SSE endpoint (`/api/runs/:id/stream`) as an Observable of
- * typed RunEvents. Server-sent named events are `step` / `done` / `failed`
- * (deliberately NOT `error`, which would collide with EventSource's transport
- * error event). Completes on `done`/`failed`.
+ * typed RunEvents. Server-sent named events are `delta` / `step` / `done` /
+ * `failed` (deliberately NOT `error`, which would collide with EventSource's
+ * transport error event). Completes on `done`/`failed`.
  */
 @Injectable({ providedIn: 'root' })
 export class RunStreamService {
@@ -17,7 +17,7 @@ export class RunStreamService {
     return new Observable<RunEvent>((sub) => {
       const es = new EventSource(this.api.streamUrl(runId));
 
-      const handle = (type: 'step' | 'done' | 'failed') => (e: MessageEvent) =>
+      const handle = (type: 'delta' | 'step' | 'done' | 'failed') => (e: MessageEvent) =>
         this.zone.run(() => {
           const data = e.data ? JSON.parse(e.data) : {};
           sub.next({ type, ...data } as RunEvent);
@@ -27,6 +27,7 @@ export class RunStreamService {
           }
         });
 
+      es.addEventListener('delta', handle('delta') as EventListener);
       es.addEventListener('step', handle('step') as EventListener);
       es.addEventListener('done', handle('done') as EventListener);
       es.addEventListener('failed', handle('failed') as EventListener);

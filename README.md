@@ -55,8 +55,9 @@ flowchart LR
 ```
 
 - **Frontend** — standalone Angular 19 components, no NgModules. `RunStreamService` wraps
-  `EventSource` in an RxJS `Observable`, replaying `step`/`done`/`failed` SSE events into
-  `NgZone` for change detection.
+  `EventSource` in an RxJS `Observable`, replaying `delta`/`step`/`done`/`failed` SSE events
+  into `NgZone` for change detection. `delta` events render token-by-token as the current
+  agent's turn streams in; a `step` event finalizes it with usage/meta once the turn completes.
 - **Backend** — Express CRUD for `Agent`/`Crew`/`Run` documents in MongoDB, plus a run
   orchestration layer that either replays a stored run's steps from Mongo (**replay mode**,
   no sidecar call) or starts a real run on the sidecar and relays its polled events as SSE
@@ -125,6 +126,16 @@ to add one, no code changes required for any of them:
 - **Manual entry** — fill in the form yourself.
 All three just pre-fill the same form — Save always goes through the same validation, so a
 generated or templated proposal gets no more trust than one typed by hand.
+
+## Live streaming
+Agent output appears token-by-token, not all at once. The sidecar's per-run event log carries
+`delta` events (one per streamed chunk) alongside the existing `step`/`done` events; the
+backend's SSE relay forwards them unchanged, and the frontend appends each chunk to the
+in-progress step until the agent's turn completes. This is purely additive at the Cohortex layer
+— `Agent.run_stream()` is a new method, `Agent.run()` (and everything that calls it, including
+`Crew`'s sequential/supervisor orchestration) is untouched — so the sidecar gets streaming by
+wrapping `.run` to consume `.run_stream()` internally while still returning a complete result
+synchronously, with zero changes to Cohortex's orchestration logic.
 
 ## Token efficiency
 Every LLM backend captures per-call token usage, which flows through the step events into the

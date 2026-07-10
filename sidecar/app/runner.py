@@ -39,12 +39,22 @@ _REGISTRY_LOCK = threading.Lock()
 
 
 def _wrap_agent_for_events(agent, state: RunState) -> None:
-    """Monkeypatch this one Agent instance's bound `.run` to also emit a step event.
-    Does not touch the vendored cohortex package — the wrap is local to this instance."""
-    original_run = agent.run
-
+    """Monkeypatch this one Agent instance's bound `.run` to stream under the
+    hood — Agent.run_stream() emits "delta" events as each chunk arrives, and
+    once it's done this still returns a complete AgentResult synchronously, so
+    Crew's orchestration (which calls .run(), and needs the full text to make
+    sequential-handoff/supervisor-JSON-parsing decisions) needs zero changes to
+    know anything changed. A final "step" event still carries the complete
+    output/meta, same as before streaming existed. Does not touch the vendored
+    cohortex package — the wrap is local to this instance."""
     def wrapped(*args, **kwargs):
-        result = original_run(*args, **kwargs)
+        result = None
+        for event in agent.run_stream(*args, **kwargs):
+            if event["type"] == "delta":
+                if event["text"]:
+                    state.add_event({"type": "delta", "agent": agent.profile.name, "text": event["text"]})
+            elif event["type"] == "done":
+                result = event["result"]
         state.add_event({
             "type": "step", "agent": result.agent,
             "output": result.output, "meta": result.meta,

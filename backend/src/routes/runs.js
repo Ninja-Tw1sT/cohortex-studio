@@ -198,7 +198,8 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
     }
     for (const e of ev.events) {
       since = Math.max(since, e.seq);
-      if (e.type === "step") send("step", e);
+      if (e.type === "delta") send("delta", { agent: e.agent, text: e.text });
+      else if (e.type === "step") send("step", e);
       else if (e.type === "done") send("done", { output: e.output });
       else if (e.type === "error") send("failed", { message: e.message });
     }
@@ -222,7 +223,11 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
       }
       break;
     }
-    await new Promise((r) => setTimeout(r, 700));
+    // Tighter than before deltas existed (was 700ms) — streamed chunks read as
+    // "live" only if the relay polls often enough to forward them promptly.
+    // Cheap to do: this is in-memory event-log polling on localhost, not an
+    // LLM call, so there's no cost impact to polling more often.
+    await new Promise((r) => setTimeout(r, 250));
   }
   res.end();
 }));

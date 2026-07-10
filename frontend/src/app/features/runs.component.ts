@@ -74,7 +74,11 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           <span class="badge cyan">{{ u.total_tokens }} tok</span>
         </div>
       </div>
-      <div class="step muted" *ngIf="running && !steps.length">// waiting for the first agent…</div>
+      <div class="step" *ngIf="streamingAgent" [style.borderLeftColor]="colorOf(streamingAgent)">
+        <div class="who" [style.color]="colorOf(streamingAgent)">{{ streamingAgent }}</div>
+        <div>{{ streamingText }}<span class="muted">▍</span></div>
+      </div>
+      <div class="step muted" *ngIf="running && !steps.length && !streamingAgent">// waiting for the first agent…</div>
       <div class="step final" *ngIf="finalOutput">
         <div class="who" style="color:var(--cyan)">FINAL</div>
         <div>{{ finalOutput }}</div>
@@ -117,6 +121,8 @@ export class RunsComponent implements OnInit {
   running = false;
   status = '';
   steps: RunStep[] = [];
+  streamingAgent: string | null = null;
+  streamingText = '';
   finalOutput = '';
   error = '';
 
@@ -165,6 +171,8 @@ export class RunsComponent implements OnInit {
   run() {
     this.error = '';
     this.steps = [];
+    this.streamingAgent = null;
+    this.streamingText = '';
     this.finalOutput = '';
     this.running = true;
     this.status = 'running';
@@ -188,8 +196,14 @@ export class RunsComponent implements OnInit {
   private listen(runId: string) {
     this.streamer.stream(runId).subscribe({
       next: (ev) => {
-        if (ev.type === 'step') this.steps.push({ agent: ev.agent, output: ev.output, meta: ev.meta });
-        else if (ev.type === 'done') { this.finalOutput = ev.output; this.status = 'done'; }
+        if (ev.type === 'delta') {
+          if (this.streamingAgent !== ev.agent) { this.streamingAgent = ev.agent; this.streamingText = ''; }
+          this.streamingText += ev.text;
+        } else if (ev.type === 'step') {
+          this.steps.push({ agent: ev.agent, output: ev.output, meta: ev.meta });
+          this.streamingAgent = null;
+          this.streamingText = '';
+        } else if (ev.type === 'done') { this.finalOutput = ev.output; this.status = 'done'; }
         else if (ev.type === 'failed') { this.error = ev.message; this.status = 'error'; }
       },
       complete: () => { this.running = false; this.loadHistory(); },

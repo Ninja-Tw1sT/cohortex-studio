@@ -21,7 +21,8 @@ function fakeSidecar() {
   s.use(express.json());
   s.post("/run", (req, res) => {
     calls.run = req.body;
-    res.json({ run_id: "sc-1" });
+    const run_id = req.body.task === "stream test" ? "sc-delta" : "sc-1";
+    res.json({ run_id });
   });
   s.get("/runs/sc-1", (_req, res) =>
     res.json({
@@ -35,6 +36,24 @@ function fakeSidecar() {
       events: [
         { seq: 1, type: "step", agent: "researcher", output: "r", meta: {} },
         { seq: 2, type: "done", output: "FINAL" },
+      ],
+      status: "done",
+    })
+  );
+  s.get("/runs/sc-delta", (_req, res) =>
+    res.json({
+      status: "done",
+      result: { output: "FINAL", steps: [{ agent: "researcher", output: "hello world", raw: "", meta: {} }] },
+      error: null,
+    })
+  );
+  s.get("/runs/sc-delta/events", (_req, res) =>
+    res.json({
+      events: [
+        { seq: 1, type: "delta", agent: "researcher", text: "hello " },
+        { seq: 2, type: "delta", agent: "researcher", text: "world" },
+        { seq: 3, type: "step", agent: "researcher", output: "hello world", meta: {} },
+        { seq: 4, type: "done", output: "FINAL" },
       ],
       status: "done",
     })
@@ -149,6 +168,24 @@ describe("runs (live)", () => {
     const r = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "t" });
     expect(r.status).toBe(201);
     expect(calls.run.crew.toolDefs).toEqual([]);
+  });
+});
+
+describe("runs (streaming deltas)", () => {
+  test("SSE relay forwards delta events, in order, before the step event", async () => {
+    const crew = await seedCrew();
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "stream test" });
+    expect(started.status).toBe(201);
+
+    const stream = await request(app).get(`/api/runs/${started.body.runId}/stream`).set("Authorization", AUTH);
+    const deltaIdx = stream.text.indexOf("event: delta");
+    const stepIdx = stream.text.indexOf("event: step");
+    expect(deltaIdx).toBeGreaterThan(-1);
+    expect(stepIdx).toBeGreaterThan(-1);
+    expect(deltaIdx).toBeLessThan(stepIdx);
+    expect(stream.text).toContain('"agent":"researcher"');
+    expect(stream.text).toContain('"text":"hello "');
+    expect(stream.text).toContain('"text":"world"');
   });
 });
 

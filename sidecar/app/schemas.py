@@ -123,8 +123,9 @@ class CrewResultOut(BaseModel):
 
 class RunEventOut(BaseModel):
     seq: int
-    type: str  # "step" | "done" | "error"
+    type: str  # "delta" | "step" | "done" | "error"
     agent: str | None = None
+    text: str | None = None  # "delta" only — one streamed chunk of an agent's output
     output: str | None = None
     meta: dict | None = None
     message: str | None = None
