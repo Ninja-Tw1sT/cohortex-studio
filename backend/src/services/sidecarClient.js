@@ -32,4 +32,14 @@ async function getEvents(sidecarRunId, since = 0) {
   return res.json(); // { events, status }
 }
 
-module.exports = { startRun, getRun, getEvents };
+async function generateTool(description, llm) {
+  const res = await fetch(`${base()}/tools/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ description, llm }),
+  });
+  if (!res.ok) throw new Error(`sidecar /tools/generate ${res.status}: ${await res.text()}`);
+  return res.json(); // { name, description, method, urlTemplate, headers }
+}
+
+module.exports = { startRun, getRun, getEvents, generateTool };

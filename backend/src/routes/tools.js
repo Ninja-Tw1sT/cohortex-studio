@@ -4,6 +4,7 @@ const { KINDS, METHODS, BUILTIN_NAMES, NAME_RE } = require("../models/Tool");
 const { isObviouslyUnsafeUrl } = require("../util/urlSafety");
 const asyncHandler = require("../util/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
+const sidecarClient = require("../services/sidecarClient");
 
 const router = express.Router();
 
@@ -67,6 +68,27 @@ router.get("/:id", asyncHandler(async (req, res) => {
   const tool = await Tool.findOne({ _id: req.params.id, ...readableBy(req.user) });
   if (!tool) return res.status(404).json({ error: "tool not found" });
   res.json(tool);
+}));
+
+// AI-assisted authoring: proposes an http tool from a plain-language description
+// using the visitor's own LLM credential (BYOK — never persisted, same per-request
+// handling as a live crew run). Nothing is saved here; the frontend pre-fills the
+// Tool Shed form with the proposal so the user reviews/edits it, and the actual
+// POST / below still runs it through the same validate() every manual entry gets.
+router.post("/generate", requireAuth, asyncHandler(async (req, res) => {
+  const { description, llm } = req.body;
+  if (!description || typeof description !== "string" || !description.trim()) {
+    return res.status(400).json({ error: "description is required" });
+  }
+  if (!llm || typeof llm !== "object" || !llm.backend) {
+    return res.status(400).json({ error: "llm.backend is required" });
+  }
+  try {
+    const proposed = await sidecarClient.generateTool(description.trim(), llm);
+    res.json(proposed);
+  } catch (e) {
+    res.status(502).json({ error: `tool generation failed: ${e.message}` });
+  }
 }));
 
 router.post("/", requireAuth, asyncHandler(async (req, res) => {

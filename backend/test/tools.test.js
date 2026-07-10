@@ -1,3 +1,5 @@
+const http = require("http");
+const express = require("express");
 const request = require("supertest");
 const createApp = require("../src/app");
 const { setup, teardown, clear } = require("./helpers");
@@ -7,8 +9,40 @@ const app = createApp();
 const AUTH = "Bearer test:u1";
 const OTHER_AUTH = "Bearer test:u2";
 
-beforeAll(setup);
-afterAll(teardown);
+// A fake Cohortex sidecar (real HTTP on an ephemeral port) so the /generate
+// route's sidecarClient/fetch path is exercised for real, not mocked.
+let sidecarServer;
+let lastGenerateBody;
+
+function fakeSidecar() {
+  const s = express();
+  s.use(express.json());
+  s.post("/tools/generate", (req, res) => {
+    lastGenerateBody = req.body;
+    if (req.body.description === "trigger a sidecar failure") {
+      return res.status(502).send("model unavailable");
+    }
+    res.json({
+      name: "cat_fact", description: "Get a random cat fact.",
+      method: "GET", urlTemplate: "https://catfact.ninja/fact", headers: {},
+    });
+  });
+  return s;
+}
+
+beforeAll(async () => {
+  await setup();
+  await new Promise((resolve) => {
+    sidecarServer = http.createServer(fakeSidecar()).listen(0, () => {
+      process.env.SIDECAR_URL = `http://127.0.0.1:${sidecarServer.address().port}`;
+      resolve();
+    });
+  });
+});
+afterAll(async () => {
+  await new Promise((r) => sidecarServer.close(r));
+  await teardown();
+});
 afterEach(clear);
 
 describe("tools CRUD (Tool Shed)", () => {
@@ -162,6 +196,56 @@ describe("http-kind tools (Tool Shed dynamic tools)", () => {
     expect(updated.status).toBe(200);
     expect(updated.body.description).toBe("updated desc");
     expect(updated.body.urlTemplate).toBe("https://api.example.com/weather?city={input}");
+  });
+});
+
+describe("AI-assisted tool generation", () => {
+  test("proposes a tool without persisting it", async () => {
+    const r = await request(app).post("/api/tools/generate").set("Authorization", AUTH).send({
+      description: "a tool that returns a random cat fact",
+      llm: { backend: "ollama" },
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({
+      name: "cat_fact", description: "Get a random cat fact.",
+      method: "GET", urlTemplate: "https://catfact.ninja/fact", headers: {},
+    });
+    expect(lastGenerateBody).toEqual({
+      description: "a tool that returns a random cat fact",
+      llm: { backend: "ollama" },
+    });
+
+    const list = await request(app).get("/api/tools").set("Authorization", AUTH);
+    expect(list.body).toHaveLength(0); // generate never calls Tool.create
+  });
+
+  test("requires sign-in", async () => {
+    const r = await request(app).post("/api/tools/generate").send({
+      description: "x", llm: { backend: "ollama" },
+    });
+    expect(r.status).toBe(401);
+  });
+
+  test("rejects a missing description", async () => {
+    const r = await request(app).post("/api/tools/generate").set("Authorization", AUTH).send({
+      llm: { backend: "ollama" },
+    });
+    expect(r.status).toBe(400);
+  });
+
+  test("rejects a missing llm.backend", async () => {
+    const r = await request(app).post("/api/tools/generate").set("Authorization", AUTH).send({
+      description: "x",
+    });
+    expect(r.status).toBe(400);
+  });
+
+  test("surfaces a sidecar failure as 502 instead of crashing", async () => {
+    const r = await request(app).post("/api/tools/generate").set("Authorization", AUTH).send({
+      description: "trigger a sidecar failure", llm: { backend: "ollama" },
+    });
+    expect(r.status).toBe(502);
+    expect(r.body.error).toBeDefined();
   });
 });
 

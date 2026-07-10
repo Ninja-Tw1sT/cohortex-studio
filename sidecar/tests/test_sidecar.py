@@ -377,6 +377,47 @@ def test_run_rejects_unsafe_tool_def_with_400():
     assert r.status_code == 400
 
 
+@register("test-tool-gen")
+class ToolGenBackend:
+    """Returns a canned http-tool JSON proposal."""
+
+    def __init__(self, model=None, **_):
+        self.model = model or "tool-gen"
+
+    def chat(self, messages, *, temperature=0.3, **opts):
+        return (
+            '{"name": "cat_fact", "description": "Get a random cat fact.", '
+            '"method": "GET", "urlTemplate": "https://catfact.ninja/fact", "headers": {}}'
+        )
+
+
+@register("test-tool-gen-junk")
+class JunkToolGenBackend:
+    """Returns no JSON at all — the endpoint should 502, not crash."""
+
+    def __init__(self, model=None, **_):
+        self.model = model or "junk"
+
+    def chat(self, messages, *, temperature=0.3, **opts):
+        return "sorry, I can't help with that"
+
+
+def test_generate_tool_returns_parsed_proposal():
+    body = {"description": "a tool that returns a random cat fact", "llm": {"backend": "test-tool-gen"}}
+    r = client.post("/tools/generate", json=body)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["name"] == "cat_fact"
+    assert data["method"] == "GET"
+    assert data["urlTemplate"] == "https://catfact.ninja/fact"
+    assert data["headers"] == {}
+
+
+def test_generate_tool_502s_when_model_returns_no_json():
+    r = client.post("/tools/generate", json={"description": "anything", "llm": {"backend": "test-tool-gen-junk"}})
+    assert r.status_code == 502
+
+
 def test_mcp_run_crew_tool():
     crew = {
         "name": "solo",

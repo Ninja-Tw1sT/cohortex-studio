@@ -85,6 +85,29 @@ class RunAcceptedResponse(BaseModel):
     run_id: str
 
 
+class ToolGenerateIn(BaseModel):
+    """A plain-language request to propose an http-kind Tool Shed entry, plus
+    which visitor-supplied LLM credential to use to generate it (BYOK — same
+    per-request, never-persisted key handling as a crew run)."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    description: str
+    llm: LlmOverrideIn
+
+
+class ToolGenerateOut(BaseModel):
+    """A *proposed* http tool — never saved by this endpoint. The frontend
+    pre-fills the Tool Shed form with this for the user to review and edit
+    before it goes through the normal create-tool validation on Save."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    description: str
+    method: str
+    url_template: str = Field(alias="urlTemplate")
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
 class AgentResultOut(BaseModel):
     agent: str
     output: str

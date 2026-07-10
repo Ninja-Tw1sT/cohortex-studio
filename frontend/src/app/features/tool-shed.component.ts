@@ -1,9 +1,12 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { LlmConfigService } from '../core/llm-config.service';
 import { Agent, BUILTIN_TOOLS, HTTP_METHODS, TOOL_KINDS, Tool } from '../core/models';
+import { TOOL_TEMPLATES, ToolTemplate } from '../core/tool-templates';
 
 interface Draft extends Partial<Tool> { headersStr?: string; }
 
@@ -23,7 +26,7 @@ const formatHeaders = (h?: Record<string, string>) =>
 @Component({
   selector: 'app-tool-shed',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="card">
       <h2>Tool Shed</h2>
@@ -55,6 +58,39 @@ const formatHeaders = (h?: Record<string, string>) =>
         </tr>
       </table>
       <p *ngIf="!tools.length" class="muted">No tools cataloged yet — add one below.</p>
+    </div>
+
+    <div class="card" *ngIf="auth.user()">
+      <h3>Templates</h3>
+      <p class="muted">Ready-made tools against well-known public APIs that need no key — pick one to pre-fill the form below.</p>
+      <div class="chips">
+        <button class="ghost" *ngFor="let t of templates" (click)="useTemplate(t)" [title]="t.description">
+          {{ t.name }}
+        </button>
+      </div>
+    </div>
+
+    <div class="card" *ngIf="auth.user()">
+      <h3>Generate with AI</h3>
+      <p class="muted" *ngIf="!llmConfig.credentials().length">
+        No saved credentials yet — add one in <a routerLink="/llm-config">LLM Config</a> to generate tools.
+      </p>
+      <ng-container *ngIf="llmConfig.credentials().length">
+        <label>Describe the tool</label>
+        <textarea [(ngModel)]="genDescription" placeholder="A tool that converts a temperature in Celsius to Fahrenheit"></textarea>
+        <div class="row">
+          <div><label>Using</label>
+            <select [(ngModel)]="genCredentialId">
+              <option [ngValue]="null">— pick a saved credential —</option>
+              <option *ngFor="let c of llmConfig.credentials()" [ngValue]="c.id">{{ c.label }} ({{ c.backend }})</option>
+            </select>
+          </div>
+        </div>
+        <p class="err" *ngIf="genError">{{ genError }}</p>
+        <button class="primary" style="margin-top:10px" (click)="generate()" [disabled]="!genDescription || !genCredentialId || generating">
+          {{ generating ? 'Generating…' : 'Generate ▸' }}
+        </button>
+      </ng-container>
     </div>
 
     <div class="card" *ngIf="auth.user(); else signInPrompt">
@@ -108,13 +144,20 @@ const formatHeaders = (h?: Record<string, string>) =>
 export class ToolShedComponent implements OnInit {
   private api = inject(ApiService);
   auth = inject(AuthService);
+  llmConfig = inject(LlmConfigService);
   builtinNames = BUILTIN_TOOLS;
   kinds = TOOL_KINDS;
   methods = HTTP_METHODS;
+  templates = TOOL_TEMPLATES;
   tools: Tool[] = [];
   agents: Agent[] = [];
   draft: Draft = this.blank();
   error = '';
+
+  genDescription = '';
+  genCredentialId: string | null = null;
+  generating = false;
+  genError = '';
 
   ngOnInit() { this.load(); }
 
@@ -134,6 +177,31 @@ export class ToolShedComponent implements OnInit {
   reset() { this.draft = this.blank(); this.error = ''; }
 
   edit(t: Tool) { this.draft = { ...t, headersStr: formatHeaders(t.headers) }; }
+
+  useTemplate(t: ToolTemplate) {
+    this.draft = { name: t.name, kind: 'http', description: t.description, method: t.method, urlTemplate: t.urlTemplate, headersStr: '' };
+    this.error = '';
+  }
+
+  generate() {
+    const cred = this.llmConfig.credentials().find((c) => c.id === this.genCredentialId);
+    if (!cred) return;
+    this.generating = true;
+    this.genError = '';
+    this.api.generateTool(this.genDescription, {
+      backend: cred.backend, model: cred.model || undefined, apiKey: cred.apiKey, baseUrl: cred.baseUrl,
+    }).subscribe({
+      next: (proposed) => {
+        this.generating = false;
+        this.draft = {
+          name: proposed.name, kind: 'http', description: proposed.description,
+          method: proposed.method, urlTemplate: proposed.urlTemplate,
+          headersStr: formatHeaders(proposed.headers),
+        };
+      },
+      error: (e) => { this.generating = false; this.genError = errMsg(e); },
+    });
+  }
 
   save() {
     const d = this.draft;

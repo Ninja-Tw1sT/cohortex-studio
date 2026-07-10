@@ -55,6 +55,16 @@ export interface Tool {
   headers?: Record<string, string>;
 }
 
+// An AI-proposed http tool from a plain-language description — never saved on
+// its own; the Tool Shed form is pre-filled with this for the user to review.
+export interface GeneratedTool {
+  name: string;
+  description: string;
+  method: (typeof HTTP_METHODS)[number];
+  urlTemplate: string;
+  headers: Record<string, string>;
+}
+
 export interface Crew {
   id?: string;
   name: string;

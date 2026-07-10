@@ -18,7 +18,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import runner
 from .crew_builder import build_crew
 from .mcp_server import mcp
-from .schemas import RunAcceptedResponse, RunEventsResponse, RunRequest, RunStatusResponse
+from .schemas import (
+    RunAcceptedResponse,
+    RunEventsResponse,
+    RunRequest,
+    RunStatusResponse,
+    ToolGenerateIn,
+    ToolGenerateOut,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("sidecar")
@@ -96,6 +103,49 @@ def run(req: RunRequest, _auth: None = Depends(require_shared_key)) -> RunAccept
 
     run_id = runner.start_run(req.crew, req.task, req.llm_overrides, req.memories)
     return RunAcceptedResponse(run_id=run_id)
+
+
+_TOOL_GEN_SYSTEM = (
+    "You design HTTP-based tools for an AI agent. Given a plain-language request, propose "
+    "ONE http tool as a single JSON object with exactly these keys: "
+    'name (a snake_case identifier), description (one sentence), method ("GET" or "POST"), '
+    'urlTemplate (a real, public, no-signup-required API endpoint; use {input} literally in '
+    "the path or query for the agent's argument — never in the hostname), headers (an object, "
+    "empty if none needed). Prefer well-known APIs that need no API key. "
+    "Reply with ONLY the JSON object and nothing else."
+)
+
+
+@app.post("/tools/generate", response_model=ToolGenerateOut)
+def generate_tool(req: ToolGenerateIn, _auth: None = Depends(require_shared_key)) -> ToolGenerateOut:
+    """Ask the visitor's own LLM credential to propose an http-kind Tool Shed
+    entry from a plain-language description. Nothing is persisted here — the
+    backend hands the proposal back to the frontend for the user to review and
+    edit before Save runs it through the normal create-tool validation."""
+    from cohortex.jsonutil import first_json
+    from cohortex.providers import get_backend
+
+    backend = get_backend(req.llm.backend, req.llm.model, api_key=req.llm.api_key, base_url=req.llm.base_url)
+    messages = [
+        {"role": "system", "content": _TOOL_GEN_SYSTEM},
+        {"role": "user", "content": req.description},
+    ]
+    try:
+        raw = backend.chat(messages, temperature=0.2)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"tool generation failed: {e}") from e
+
+    obj = first_json(raw, ("name", "urlTemplate", "url_template"))
+    if not obj:
+        raise HTTPException(status_code=502, detail="model did not return a usable tool definition")
+
+    return ToolGenerateOut(
+        name=str(obj.get("name", "")).strip(),
+        description=str(obj.get("description", "")).strip(),
+        method=str(obj.get("method", "GET")).strip().upper(),
+        urlTemplate=str(obj.get("urlTemplate") or obj.get("url_template") or "").strip(),
+        headers={str(k): str(v) for k, v in (obj.get("headers") or {}).items()},
+    )
 
 
 @app.get("/runs/{run_id}", response_model=RunStatusResponse)

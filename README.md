@@ -111,6 +111,21 @@ credentials in the **LLM Config** page (stored in browser localStorage only), as
 each agent in the crew, and the keys are sent per-request to the sidecar, used once, and
 never stored in MongoDB or logged anywhere server-side.
 
+## Tool Shed
+Agents can call tools beyond Cohortex's two Python builtins (`calculator`, `word_count`) via
+**http-kind** catalog entries — a fixed-host URL template (`{input}` allowed only in the
+path/query, never the hostname), validated server-side and re-validated at run time
+(`cohortex.tools.make_dynamic_tool`) against a private-IP/cloud-metadata blocklist. Three ways
+to add one, no code changes required for any of them:
+- **Templates** — one click loads a ready-made tool against a well-known, no-key public API
+  (Wikipedia summaries, dictionary lookups, public holidays, jokes, cat facts) into the form.
+- **Generate with AI** — describe the tool in plain language; your own saved LLM credential
+  (BYOK — same per-request, never-persisted key handling as a live run) proposes a name,
+  method, URL template, and headers, which you review and edit before saving.
+- **Manual entry** — fill in the form yourself.
+All three just pre-fill the same form — Save always goes through the same validation, so a
+generated or templated proposal gets no more trust than one typed by hand.
+
 ## Token efficiency
 Every LLM backend captures per-call token usage, which flows through the step events into the
 live run view as per-step and total token counts. Sequential crews support `maxHandoffChars` to
