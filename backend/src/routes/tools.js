@@ -4,6 +4,7 @@ const { KINDS, METHODS, BUILTIN_NAMES, NAME_RE } = require("../models/Tool");
 const { isObviouslyUnsafeUrl } = require("../util/urlSafety");
 const asyncHandler = require("../util/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
+const { toolGenerateLimiter } = require("../middleware/rateLimit");
 const sidecarClient = require("../services/sidecarClient");
 
 const router = express.Router();
@@ -61,7 +62,7 @@ function validate(effective) {
 }
 
 router.get("/", asyncHandler(async (req, res) => {
-  res.json(await Tool.find(readableBy(req.user)).sort({ name: 1 }));
+  res.json(await Tool.find(readableBy(req.user)).sort({ name: 1 }).limit(200));
 }));
 
 router.get("/:id", asyncHandler(async (req, res) => {
@@ -75,7 +76,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
 // handling as a live crew run). Nothing is saved here; the frontend pre-fills the
 // Tool Shed form with the proposal so the user reviews/edits it, and the actual
 // POST / below still runs it through the same validate() every manual entry gets.
-router.post("/generate", requireAuth, asyncHandler(async (req, res) => {
+router.post("/generate", requireAuth, toolGenerateLimiter, asyncHandler(async (req, res) => {
   const { description, llm } = req.body;
   if (!description || typeof description !== "string" || !description.trim()) {
     return res.status(400).json({ error: "description is required" });

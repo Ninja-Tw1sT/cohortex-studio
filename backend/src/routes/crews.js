@@ -14,7 +14,7 @@ const pick = (body) =>
 const readableBy = (user) => (user ? { $or: [{ ownerId: null }, { ownerId: user.uid }] } : { ownerId: null });
 
 router.get("/", asyncHandler(async (req, res) => {
-  res.json(await Crew.find(readableBy(req.user)).sort({ name: 1 }));
+  res.json(await Crew.find(readableBy(req.user)).sort({ name: 1 }).limit(200));
 }));
 
 router.get("/:id", asyncHandler(async (req, res) => {

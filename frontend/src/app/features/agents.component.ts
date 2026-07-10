@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { downloadJson, readJsonFile, stripMeta } from '../core/json-io';
 import { Agent, BACKENDS, Tool } from '../core/models';
 
 interface Draft extends Partial<Agent> { vaultsStr?: string; }
@@ -27,7 +28,9 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           <td><span class="badge cyan">{{ a.backend || 'default' }}</span></td>
           <td class="muted">{{ a.tools.join(', ') || '—' }}</td>
           <td style="text-align:right">
+            <button class="ghost" (click)="exportJson(a)">Export</button>
             <ng-container *ngIf="auth.user(); else noAccess">
+              <button class="ghost" (click)="clone(a)">Clone</button>
               <button class="ghost" (click)="edit(a)">Edit</button>
               <button class="danger" (click)="remove(a)">Del</button>
             </ng-container>
@@ -42,6 +45,8 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
       <h3>
         <span class="swatch" *ngIf="draft.color" [style.background]="draft.color" [style.color]="draft.color"></span>
         {{ draft.id ? 'Edit agent' : 'New agent' }}
+        <button class="ghost" style="float:right" (click)="fileInput.click()">Import JSON</button>
+        <input #fileInput type="file" accept="application/json" style="display:none" (change)="importJson($event)" />
       </h3>
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
@@ -111,6 +116,32 @@ export class AgentsComponent implements OnInit {
     this.draft = { ...a, tools: [...(a.tools || [])], vaultsStr: (a.vaults || []).join(', ') };
   }
 
+  clone(a: Agent) {
+    if (!this.auth.user()) return;
+    const copy = stripMeta(a) as Partial<Agent>;
+    this.draft = { ...copy, name: `${a.name}_copy`, tools: [...(a.tools || [])], vaultsStr: (a.vaults || []).join(', '), color: null };
+    this.error = '';
+  }
+
+  exportJson(a: Agent) {
+    downloadJson(`${a.name}.agent.json`, stripMeta(a));
+  }
+
+  async importJson(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const data = stripMeta(await readJsonFile(file));
+      this.draft = { ...this.blank(), ...data, vaultsStr: (data['vaults'] || []).join(', ') };
+      this.error = '';
+    } catch (e: any) {
+      this.error = `import failed: ${e.message}`;
+    } finally {
+      input.value = '';
+    }
+  }
+
   hasTool(name: string) { return (this.draft.tools || []).includes(name); }
   toggleTool(name: string) {
     const set = (this.draft.tools ||= []);
@@ -136,6 +167,7 @@ export class AgentsComponent implements OnInit {
   }
 
   remove(a: Agent) {
-    if (a.id) this.api.deleteAgent(a.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
+    if (!a.id || !confirm(`Delete agent "${a.name}"? This can't be undone.`)) return;
+    this.api.deleteAgent(a.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
   }
 }

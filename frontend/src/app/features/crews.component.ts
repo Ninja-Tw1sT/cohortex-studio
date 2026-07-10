@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
+import { downloadJson, readJsonFile, stripMeta } from '../core/json-io';
 import { Agent, Crew, TOPOLOGIES, Topology } from '../core/models';
 
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
@@ -25,7 +26,9 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
             <span *ngIf="c.supervisorName" class="badge magenta">super: {{ c.supervisorName }}</span>
           </td>
           <td style="text-align:right">
+            <button class="ghost" (click)="exportJson(c)">Export</button>
             <ng-container *ngIf="auth.user(); else noAccess">
+              <button class="ghost" (click)="clone(c)">Clone</button>
               <button class="ghost" (click)="edit(c)">Edit</button>
               <button class="danger" (click)="remove(c)">Del</button>
             </ng-container>
@@ -37,7 +40,11 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
     </div>
 
     <div class="card" *ngIf="auth.user(); else signInPrompt">
-      <h3>{{ draft.id ? 'Edit crew' : 'Build a crew' }}</h3>
+      <h3>
+        {{ draft.id ? 'Edit crew' : 'Build a crew' }}
+        <button class="ghost" style="float:right" (click)="fileInput.click()">Import JSON</button>
+        <input #fileInput type="file" accept="application/json" style="display:none" (change)="importJson($event)" />
+      </h3>
       <p class="err" *ngIf="error">{{ error }}</p>
       <div class="row">
         <div><label>Name</label><input [(ngModel)]="draft.name" placeholder="research_team" /></div>
@@ -108,6 +115,32 @@ export class CrewsComponent implements OnInit {
 
   edit(c: Crew) { this.draft = { ...c, agentNames: [...c.agentNames] }; }
 
+  clone(c: Crew) {
+    if (!this.auth.user()) return;
+    const copy = stripMeta(c) as Partial<Crew>;
+    this.draft = { ...this.blank(), ...copy, name: `${c.name}_copy`, agentNames: [...c.agentNames] };
+    this.error = '';
+  }
+
+  exportJson(c: Crew) {
+    downloadJson(`${c.name}.crew.json`, stripMeta(c));
+  }
+
+  async importJson(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const data = stripMeta(await readJsonFile(file));
+      this.draft = { ...this.blank(), ...data, agentNames: [...(data['agentNames'] || [])] };
+      this.error = '';
+    } catch (e: any) {
+      this.error = `import failed: ${e.message}`;
+    } finally {
+      input.value = '';
+    }
+  }
+
   isSelected(name: string) { return this.draft.agentNames.includes(name); }
   toggle(name: string) {
     const set = this.draft.agentNames;
@@ -128,6 +161,7 @@ export class CrewsComponent implements OnInit {
   }
 
   remove(c: Crew) {
-    if (c.id) this.api.deleteCrew(c.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
+    if (!c.id || !confirm(`Delete crew "${c.name}"? This can't be undone.`)) return;
+    this.api.deleteCrew(c.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
   }
 }

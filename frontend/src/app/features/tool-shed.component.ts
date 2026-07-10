@@ -216,6 +216,7 @@ export class ToolShedComponent implements OnInit {
   }
 
   remove(t: Tool) {
-    if (t.id) this.api.deleteTool(t.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
+    if (!t.id || !confirm(`Delete tool "${t.name}"? Any agent assigned to it will lose access.`)) return;
+    this.api.deleteTool(t.id).subscribe({ next: () => this.load(), error: (e) => (this.error = errMsg(e)) });
   }
 }

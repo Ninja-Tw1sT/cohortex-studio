@@ -18,9 +18,21 @@ const runLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.uid || req.ip,
+  keyGenerator: (req) => req.user?.uid || rateLimit.ipKeyGenerator(req.ip),
   skip: (req) => req.body?.mode === "replay",
   message: { error: "rate limit: too many runs started, try again in a while" },
 });
 
-module.exports = { apiLimiter, runLimiter };
+// AI tool generation spends the visitor's own BYOK key, so this isn't a
+// shared-cost risk the way runLimiter is — it's here to stop a rapid-click
+// loop from hammering their own key/quota or the sidecar's Ollama process.
+const toolGenerateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.uid || rateLimit.ipKeyGenerator(req.ip),
+  message: { error: "rate limit: too many tool-generation requests, try again in a while" },
+});
+
+module.exports = { apiLimiter, runLimiter, toolGenerateLimiter };

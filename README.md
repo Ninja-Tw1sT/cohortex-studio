@@ -143,6 +143,14 @@ where the sidecar isn't reachable from outside your machine. Cloud LLM provider 
 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`) are optional — Ollama
 needs none.
 
+## Convenience
+Every catalog entry (agent, crew) supports **Export** (downloads a sanitized JSON file — no
+`id`/`ownerId`/timestamps, safe to hand to someone else), **Import** (loads a JSON file into the
+form for review before saving — never auto-saves), and **Clone** (pre-fills the form from an
+existing entry with `_copy` appended to the name). All three just populate the same form Save
+already validates, so nothing skips normal validation. Destructive actions (delete) require a
+confirmation dialog.
+
 ## Testing
 ```bash
 cd frontend && npm test     # Karma/Jasmine
