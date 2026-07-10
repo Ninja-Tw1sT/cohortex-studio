@@ -88,6 +88,20 @@ export interface RunStep {
   seq?: number;
 }
 
+export interface CrewUsage {
+  crewName: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  steps: number;
+}
+
+export interface RunStats {
+  runCount: number;
+  totals: { promptTokens: number; completionTokens: number; totalTokens: number };
+  byCrew: CrewUsage[];
+}
+
 export interface Run {
   id: string;
   crewName: string;

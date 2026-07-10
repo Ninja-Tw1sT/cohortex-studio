@@ -75,6 +75,7 @@ GET/POST/PUT/DELETE  /api/tools[/:id]     # Tool Shed catalog
 POST                 /api/tools/generate  { description, llm }  # AI-proposed http tool, not saved
 POST                 /api/runs            { crewId, task, mode: "live" | "replay" }
 GET                  /api/runs
+GET                  /api/runs/stats       # token usage aggregated across completed runs
 GET                  /api/runs/:id
 GET                  /api/runs/:id/stream # SSE: delta | step | done | cancelled | failed
 POST                 /api/runs/:id/cancel # best-effort stop for a running live run
@@ -153,6 +154,11 @@ truncate inter-agent context and bound token growth. The Anthropic backend uses 
 (`cache_control: ephemeral`) so supervisor loops avoid re-tokenizing the same system prompt.
 Completed runs are summarized and stored as "run memories" — the last 3 are injected as context
 for future runs on the same crew, enabling cross-run learning without replaying full transcripts.
+
+The **Usage** page turns that same per-run token data into a small dashboard — total tokens,
+completed-run count, and a per-crew breakdown (`GET /api/runs/stats`, a MongoDB aggregation over
+`Run.result.steps[].meta.usage`) — no new instrumentation, just adding up data every run already
+captures instead of discarding it after display.
 
 ## Security
 No secrets in code or config. Backend and sidecar each read their own gitignored `.env`

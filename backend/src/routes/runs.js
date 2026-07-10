@@ -136,6 +136,44 @@ router.get("/", asyncHandler(async (req, res) => {
   res.json(await Run.find(readableBy(req.user)).sort({ createdAt: -1 }).limit(50));
 }));
 
+// GET /api/runs/stats — token usage aggregated from completed runs' step meta,
+// data already captured by every run and otherwise only ever shown per-run then
+// discarded. Registered before /:id so "stats" isn't swallowed as a run id.
+router.get("/stats", asyncHandler(async (req, res) => {
+  const match = { ...readableBy(req.user), status: "done" };
+  const zero = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
+  const byCrew = await Run.aggregate([
+    { $match: match },
+    { $unwind: "$result.steps" },
+    {
+      $group: {
+        _id: "$crewName",
+        promptTokens: { $sum: { $ifNull: ["$result.steps.meta.usage.prompt_tokens", 0] } },
+        completionTokens: { $sum: { $ifNull: ["$result.steps.meta.usage.completion_tokens", 0] } },
+        totalTokens: { $sum: { $ifNull: ["$result.steps.meta.usage.total_tokens", 0] } },
+        steps: { $sum: 1 },
+      },
+    },
+    { $sort: { totalTokens: -1 } },
+    {
+      $project: {
+        _id: 0, crewName: "$_id", promptTokens: 1, completionTokens: 1, totalTokens: 1, steps: 1,
+      },
+    },
+  ]);
+
+  const totals = byCrew.reduce((acc, c) => ({
+    promptTokens: acc.promptTokens + c.promptTokens,
+    completionTokens: acc.completionTokens + c.completionTokens,
+    totalTokens: acc.totalTokens + c.totalTokens,
+  }), { ...zero });
+
+  const runCount = await Run.countDocuments(match);
+
+  res.json({ runCount, totals, byCrew });
+}));
+
 // GET /api/runs/:id — poll fallback; syncs terminal state from the sidecar.
 router.get("/:id", asyncHandler(async (req, res) => {
   const run = await Run.findOne({ _id: req.params.id, ...readableBy(req.user) });

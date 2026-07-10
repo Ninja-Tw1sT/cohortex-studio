@@ -274,6 +274,67 @@ describe("runs (replay, no sidecar call)", () => {
   });
 });
 
+describe("runs (usage stats)", () => {
+  async function seedDoneRun(crewName, ownerId, usages) {
+    await Run.create({
+      ownerId, crewName, task: "t", status: "done", mode: "live",
+      result: {
+        output: "out",
+        steps: usages.map((u, i) => ({ agent: `a${i}`, output: "o", raw: "", meta: { usage: u } })),
+      },
+    });
+  }
+
+  test("aggregates token usage per crew and overall, from done runs only", async () => {
+    await seedDoneRun("alpha", "u1", [
+      { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
+    ]);
+    await seedDoneRun("beta", "u1", [
+      { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+    ]);
+    // a running (not done) run must not count
+    await Run.create({ ownerId: "u1", crewName: "alpha", task: "t", status: "running", mode: "live" });
+
+    const r = await request(app).get("/api/runs/stats").set("Authorization", AUTH);
+    expect(r.status).toBe(200);
+    expect(r.body.runCount).toBe(2);
+    expect(r.body.totals).toEqual({ promptTokens: 130, completionTokens: 65, totalTokens: 195 });
+
+    const alpha = r.body.byCrew.find((c) => c.crewName === "alpha");
+    const beta = r.body.byCrew.find((c) => c.crewName === "beta");
+    expect(alpha).toEqual({ crewName: "alpha", promptTokens: 30, completionTokens: 15, totalTokens: 45, steps: 2 });
+    expect(beta).toEqual({ crewName: "beta", promptTokens: 100, completionTokens: 50, totalTokens: 150, steps: 1 });
+  });
+
+  test("steps without usage data contribute zero, not an error", async () => {
+    await Run.create({
+      ownerId: "u1", crewName: "gamma", task: "t", status: "done", mode: "live",
+      result: { output: "out", steps: [{ agent: "a", output: "o", raw: "", meta: {} }] },
+    });
+    const r = await request(app).get("/api/runs/stats").set("Authorization", AUTH);
+    expect(r.status).toBe(200);
+    expect(r.body.byCrew[0]).toEqual({ crewName: "gamma", promptTokens: 0, completionTokens: 0, totalTokens: 0, steps: 1 });
+  });
+
+  test("only counts the requesting user's own runs plus the public demo namespace", async () => {
+    await seedDoneRun("mine", "u1", [{ prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }]);
+    await seedDoneRun("theirs", "u2", [{ prompt_tokens: 1000, completion_tokens: 1000, total_tokens: 2000 }]);
+
+    const r = await request(app).get("/api/runs/stats").set("Authorization", AUTH);
+    expect(r.body.byCrew.map((c) => c.crewName)).toEqual(["mine"]);
+  });
+
+  test("anonymous request sees only the public demo namespace", async () => {
+    await seedDoneRun("demo", null, [{ prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 }]);
+    await seedDoneRun("private", "u1", [{ prompt_tokens: 500, completion_tokens: 500, total_tokens: 1000 }]);
+
+    const r = await request(app).get("/api/runs/stats");
+    expect(r.status).toBe(200);
+    expect(r.body.byCrew.map((c) => c.crewName)).toEqual(["demo"]);
+  });
+});
+
 describe("runs (BYOK llmOverrides, per-agent map)", () => {
   const ORIGINAL_LIVE_RUNS_ENABLED = process.env.LIVE_RUNS_ENABLED;
   afterEach(() => {

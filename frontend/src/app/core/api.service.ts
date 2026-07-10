@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Agent, Crew, GeneratedTool, LlmConfig, Run, Tool } from './models';
+import { Agent, Crew, GeneratedTool, LlmConfig, Run, RunStats, Tool } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -48,4 +48,5 @@ export class ApiService {
   cancelRun(runId: string): Observable<{ ok: boolean }> {
     return this.http.post<{ ok: boolean }>(`${this.base}/runs/${runId}/cancel`, {});
   }
+  runStats(): Observable<RunStats> { return this.http.get<RunStats>(`${this.base}/runs/stats`); }
 }

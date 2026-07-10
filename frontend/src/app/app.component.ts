@@ -14,6 +14,7 @@ import { AuthService } from './core/auth.service';
         <a routerLink="/agents" routerLinkActive="active">Agents</a>
         <a routerLink="/tool-shed" routerLinkActive="active">Tool Shed</a>
         <a routerLink="/runs" routerLinkActive="active">Run</a>
+        <a routerLink="/stats" routerLinkActive="active">Usage</a>
         <a routerLink="/llm-config" routerLinkActive="active">LLM Config</a>
       </nav>
       <div class="tag">// visual multi-agent studio</div>
