@@ -5,6 +5,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# git is needed at build time only, to pip-install the pinned `cohortex @
+# git+https://...` dependency in requirements.txt — python:3.12-slim doesn't
+# ship it. Not needed at runtime, so this doesn't bloat the final image beyond
+# apt's own footprint (no separate multi-stage copy — simplicity over the
+# few extra MB for a low-traffic portfolio deploy).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
