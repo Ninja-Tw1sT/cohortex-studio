@@ -55,6 +55,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           [disabled]="!crewId || !task || running || (mode==='live' && !auth.user()) || (mode==='live' && crewMembers.length && !allCovered())">
           {{ running ? 'Running…' : 'Run ▸' }}
         </button>
+        <button class="danger" *ngIf="running && mode==='live'" (click)="cancel()" style="margin-left:8px">Stop ■</button>
         <span *ngIf="status" class="badge" [class.green]="status==='done'" [class.magenta]="status==='error'" [class.cyan]="status==='running'" style="margin-left:10px">{{ status }}</span>
         <span *ngIf="mode==='live' && !auth.user()" class="muted" style="margin-left:10px">sign in to run live — try replay to preview</span>
         <span *ngIf="mode==='live' && auth.user() && crewMembers.length && !allCovered()" class="muted" style="margin-left:10px">
@@ -120,6 +121,7 @@ export class RunsComponent implements OnInit {
 
   running = false;
   status = '';
+  currentRunId: string | null = null;
   steps: RunStep[] = [];
   streamingAgent: string | null = null;
   streamingText = '';
@@ -176,6 +178,7 @@ export class RunsComponent implements OnInit {
     this.finalOutput = '';
     this.running = true;
     this.status = 'running';
+    this.currentRunId = null;
 
     const overrides: Record<string, LlmConfig> | undefined =
       this.mode === 'live' && this.crewMembers.length
@@ -188,9 +191,14 @@ export class RunsComponent implements OnInit {
         : undefined;
 
     this.api.createRun(this.crewId, this.task, this.mode, overrides).subscribe({
-      next: ({ runId }) => this.listen(runId),
+      next: ({ runId }) => { this.currentRunId = runId; this.listen(runId); },
       error: (e) => { this.error = errMsg(e); this.running = false; this.status = 'error'; },
     });
+  }
+
+  cancel() {
+    if (!this.currentRunId) return;
+    this.api.cancelRun(this.currentRunId).subscribe({ error: () => {} });
   }
 
   private listen(runId: string) {
@@ -204,6 +212,7 @@ export class RunsComponent implements OnInit {
           this.streamingAgent = null;
           this.streamingText = '';
         } else if (ev.type === 'done') { this.finalOutput = ev.output; this.status = 'done'; }
+        else if (ev.type === 'cancelled') { this.status = 'cancelled'; }
         else if (ev.type === 'failed') { this.error = ev.message; this.status = 'error'; }
       },
       complete: () => { this.running = false; this.loadHistory(); },

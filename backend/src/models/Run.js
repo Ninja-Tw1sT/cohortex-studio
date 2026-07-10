@@ -8,7 +8,7 @@ const runSchema = new mongoose.Schema(
     task: { type: String, required: true },
     status: {
       type: String,
-      enum: ["queued", "running", "done", "error"],
+      enum: ["queued", "running", "done", "error", "cancelled"],
       default: "queued",
     },
     mode: { type: String, enum: ["live", "replay"], default: "live" },

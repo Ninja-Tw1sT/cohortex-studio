@@ -45,4 +45,7 @@ export class ApiService {
     });
   }
   streamUrl(runId: string): string { return `${this.base}/runs/${runId}/stream`; }
+  cancelRun(runId: string): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>(`${this.base}/runs/${runId}/cancel`, {});
+  }
 }

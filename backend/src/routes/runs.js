@@ -7,6 +7,7 @@ const asyncHandler = require("../util/asyncHandler");
 const { buildSidecarPayload } = require("../services/crewPayload");
 const sidecar = require("../services/sidecarClient");
 const { runLimiter } = require("../middleware/rateLimit");
+const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -143,7 +144,7 @@ router.get("/:id", asyncHandler(async (req, res) => {
   if (run.status === "running" && run.sidecarRunId) {
     try {
       const s = await sidecar.getRun(run.sidecarRunId);
-      if (s.status === "done" || s.status === "error") {
+      if (s.status === "done" || s.status === "error" || s.status === "cancelled") {
         run.status = s.status;
         run.result = s.result ?? run.result;
         run.error = s.error ?? run.error;
@@ -155,6 +156,23 @@ router.get("/:id", asyncHandler(async (req, res) => {
     }
   }
   res.json(run);
+}));
+
+// POST /api/runs/:id/cancel — best-effort stop for a live run in progress.
+// { ok: true } if a cancel was actually requested, { ok: false } if the run
+// had already finished (or was never live) — neither is an error.
+router.post("/:id/cancel", requireAuth, asyncHandler(async (req, res) => {
+  const run = await Run.findOne({ _id: req.params.id, ownerId: req.user.uid });
+  if (!run) return res.status(404).json({ error: "run not found" });
+  if (run.status !== "running" || !run.sidecarRunId) {
+    return res.json({ ok: false });
+  }
+  try {
+    const result = await sidecar.cancelRun(run.sidecarRunId);
+    res.json(result);
+  } catch (e) {
+    res.status(502).json({ error: `sidecar unavailable: ${e.message}` });
+  }
 }));
 
 // GET /api/runs/:id/stream — SSE relay of the sidecar's step/done/error events.
@@ -202,8 +220,9 @@ router.get("/:id/stream", asyncHandler(async (req, res) => {
       else if (e.type === "step") send("step", e);
       else if (e.type === "done") send("done", { output: e.output });
       else if (e.type === "error") send("failed", { message: e.message });
+      else if (e.type === "cancelled") send("cancelled", {});
     }
-    if (ev.status === "done" || ev.status === "error") {
+    if (ev.status === "done" || ev.status === "error" || ev.status === "cancelled") {
       try {
         const s = await sidecar.getRun(run.sidecarRunId);
         run.status = ev.status;

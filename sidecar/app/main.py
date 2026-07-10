@@ -163,3 +163,14 @@ def get_run_events(run_id: str, since: int = 0, _auth: None = Depends(require_sh
         raise HTTPException(status_code=404, detail=f"unknown run_id {run_id!r}")
     events, status = found
     return RunEventsResponse(events=events, status=status)
+
+
+@app.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: str, _auth: None = Depends(require_shared_key)) -> dict:
+    """Best-effort: sets a flag the run's worker thread checks between agent
+    turns and streamed chunks. Not instant — a call already in flight to the
+    LLM provider still has to return before the check fires."""
+    if runner.get_run(run_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown run_id {run_id!r}")
+    ok = runner.cancel_run(run_id)
+    return {"ok": ok}

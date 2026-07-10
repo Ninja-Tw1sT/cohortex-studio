@@ -71,10 +71,13 @@ flowchart LR
 ```
 GET/POST/PUT/DELETE  /api/agents[/:id]
 GET/POST/PUT/DELETE  /api/crews[/:id]
-POST                 /api/runs            { crewName, task, mode: "live" | "replay" }
+GET/POST/PUT/DELETE  /api/tools[/:id]     # Tool Shed catalog
+POST                 /api/tools/generate  { description, llm }  # AI-proposed http tool, not saved
+POST                 /api/runs            { crewId, task, mode: "live" | "replay" }
 GET                  /api/runs
 GET                  /api/runs/:id
-GET                  /api/runs/:id/stream # SSE: step | done | failed
+GET                  /api/runs/:id/stream # SSE: delta | step | done | cancelled | failed
+POST                 /api/runs/:id/cancel # best-effort stop for a running live run
 GET                  /api/health, /api/ping
 ```
 
@@ -136,6 +139,12 @@ in-progress step until the agent's turn completes. This is purely additive at th
 `Crew`'s sequential/supervisor orchestration) is untouched — so the sidecar gets streaming by
 wrapping `.run` to consume `.run_stream()` internally while still returning a complete result
 synchronously, with zero changes to Cohortex's orchestration logic.
+
+A running live run can be stopped early with **Stop ■** — a best-effort cancellation: the
+sidecar sets a flag its worker thread checks before each agent's turn and again after every
+streamed chunk, so it takes effect mid-generation rather than waiting for the whole crew (or
+even the current agent's full turn) to finish. A call already in flight to the LLM provider
+still has to return before the check fires, so cancellation isn't instant, but it's close.
 
 ## Token efficiency
 Every LLM backend captures per-call token usage, which flows through the step events into the

@@ -8,6 +8,7 @@ scripted "model" standing in for the LLM.
 """
 import pathlib
 import sys
+import threading
 import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -82,6 +83,25 @@ class StreamingBackend:
         for chunk in ("hello ", "streaming ", "world"):
             yield chunk
         self.last_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+
+@register("test-cancellable")
+class CancellableBackend:
+    """Blocks on a shared Event before producing any output, so a test can
+    reliably cancel the run before it completes — no sleep-based timing race."""
+    _proceed = threading.Event()
+
+    def __init__(self, model=None, **_):
+        self.model = model or "cancellable"
+
+    def chat(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        CancellableBackend._proceed.wait(timeout=5)
+        return "should not be used if cancelled first"
+
+    def chat_stream(self, messages, *, temperature=0.3, max_tokens=None, **opts):
+        CancellableBackend._proceed.wait(timeout=5)
+        yield "should not appear if cancelled first"
+        self.last_usage = {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
 
 
 def _agent(name, role="Agent", backend="test-const", **overrides):
@@ -333,6 +353,51 @@ def test_run_with_memories_in_payload():
 def test_unknown_run_id_404s():
     assert client.get("/runs/does-not-exist").status_code == 404
     assert client.get("/runs/does-not-exist/events").status_code == 404
+
+
+def test_cancel_run_stops_it_before_completion():
+    CancellableBackend._proceed.clear()
+    body = {
+        "task": "x",
+        "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo", backend="test-cancellable")]},
+    }
+    run_id = client.post("/run", json=body).json()["run_id"]
+
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and client.get(f"/runs/{run_id}").json()["status"] != "running":
+        time.sleep(0.01)
+
+    cancel_resp = client.post(f"/runs/{run_id}/cancel")
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json() == {"ok": True}
+
+    CancellableBackend._proceed.set()  # unblock the worker thread so it can see the cancel flag
+
+    deadline = time.monotonic() + 2
+    status = None
+    while time.monotonic() < deadline:
+        status = client.get(f"/runs/{run_id}").json()["status"]
+        if status != "running":
+            break
+        time.sleep(0.01)
+    assert status == "cancelled"
+
+    events = client.get(f"/runs/{run_id}/events").json()["events"]
+    assert any(e["type"] == "cancelled" for e in events)
+    assert not any(e["type"] == "done" for e in events)
+
+
+def test_cancel_unknown_run_id_404s():
+    assert client.post("/runs/does-not-exist/cancel").status_code == 404
+
+
+def test_cancel_an_already_finished_run_is_a_noop():
+    body = {"task": "x", "crew": {"name": "solo", "topology": "single", "agents": [_agent("solo")]}}
+    run_id, data = _run_and_wait(body)
+    assert data["status"] == "done"
+    r = client.post(f"/runs/{run_id}/cancel")
+    assert r.status_code == 200
+    assert r.json() == {"ok": False}
 
 
 def test_camelcase_aliases_accepted():

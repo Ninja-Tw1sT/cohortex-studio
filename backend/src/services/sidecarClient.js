@@ -42,4 +42,13 @@ async function generateTool(description, llm) {
   return res.json(); // { name, description, method, urlTemplate, headers }
 }
 
-module.exports = { startRun, getRun, getEvents, generateTool };
+async function cancelRun(sidecarRunId) {
+  const res = await fetch(`${base()}/runs/${sidecarRunId}/cancel`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`sidecar cancel ${res.status}: ${await res.text()}`);
+  return res.json(); // { ok }
+}
+
+module.exports = { startRun, getRun, getEvents, generateTool, cancelRun };

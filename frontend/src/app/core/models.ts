@@ -92,7 +92,7 @@ export interface Run {
   id: string;
   crewName: string;
   task: string;
-  status: 'queued' | 'running' | 'done' | 'error';
+  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   mode: 'live' | 'replay';
   result?: { output: string; steps: RunStep[] } | null;
   error?: string | null;
@@ -103,4 +103,5 @@ export type RunEvent =
   | { type: 'delta'; agent: string; text: string }
   | { type: 'step'; agent: string; output: string; meta?: Record<string, unknown>; seq?: number }
   | { type: 'done'; output: string }
+  | { type: 'cancelled' }
   | { type: 'failed'; message: string };

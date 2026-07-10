@@ -20,12 +20,19 @@ from .schemas import AgentResultOut, CrewIn, CrewResultOut, LlmOverrideIn, Memor
 _EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="cohortex-run")
 
 
+class RunCancelled(Exception):
+    """Raised inside the run's worker thread to unwind out of Crew.run() when a
+    user requests cancellation. Caught only in _execute — never meant to
+    escape it."""
+
+
 @dataclass(eq=False)
 class RunState:
-    status: str = "running"  # running | done | error
+    status: str = "running"  # running | done | error | cancelled
     events: list[dict] = field(default_factory=list)
     result: CrewResultOut | None = None
     error: str | None = None
+    cancel_requested: bool = False
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def add_event(self, event: dict) -> None:
@@ -46,10 +53,19 @@ def _wrap_agent_for_events(agent, state: RunState) -> None:
     sequential-handoff/supervisor-JSON-parsing decisions) needs zero changes to
     know anything changed. A final "step" event still carries the complete
     output/meta, same as before streaming existed. Does not touch the vendored
-    cohortex package — the wrap is local to this instance."""
+    cohortex package — the wrap is local to this instance.
+
+    Also checks state.cancel_requested before starting a turn and again after
+    every streamed chunk, so a cancel takes effect mid-generation rather than
+    waiting for the current agent's full turn (or the rest of the crew) to
+    finish first."""
     def wrapped(*args, **kwargs):
+        if state.cancel_requested:
+            raise RunCancelled()
         result = None
         for event in agent.run_stream(*args, **kwargs):
+            if state.cancel_requested:
+                raise RunCancelled()
             if event["type"] == "delta":
                 if event["text"]:
                     state.add_event({"type": "delta", "agent": agent.profile.name, "text": event["text"]})
@@ -91,6 +107,9 @@ def _execute(run_id: str, crew_in: CrewIn, task: str,
         state.result = out
         state.status = "done"
         state.add_event({"type": "done", "output": out.output})
+    except RunCancelled:
+        state.status = "cancelled"
+        state.add_event({"type": "cancelled"})
     except Exception as e:  # noqa: BLE001
         state.error = str(e)
         state.status = "error"
@@ -109,6 +128,16 @@ def start_run(crew_in: CrewIn, task: str,
 
 def get_run(run_id: str) -> RunState | None:
     return _REGISTRY.get(run_id)
+
+
+def cancel_run(run_id: str) -> bool:
+    """Returns False for an unknown run_id or one that's already finished —
+    the caller should treat either as "nothing to cancel", not an error."""
+    state = _REGISTRY.get(run_id)
+    if state is None or state.status != "running":
+        return False
+    state.cancel_requested = True
+    return True
 
 
 def get_events(run_id: str, since: int = 0) -> tuple[list[dict], str] | None:

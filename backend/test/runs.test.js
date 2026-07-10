@@ -16,13 +16,30 @@ const AUTH = "Bearer test:u1";
 let sidecarServer;
 let calls;
 
+let cancelled;
+
 function fakeSidecar() {
   const s = express();
   s.use(express.json());
   s.post("/run", (req, res) => {
     calls.run = req.body;
-    const run_id = req.body.task === "stream test" ? "sc-delta" : "sc-1";
+    let run_id = "sc-1";
+    if (req.body.task === "stream test") run_id = "sc-delta";
+    if (req.body.task === "cancel test") { run_id = "sc-cancel"; cancelled = false; }
     res.json({ run_id });
+  });
+  s.get("/runs/sc-cancel", (_req, res) =>
+    res.json({ status: cancelled ? "cancelled" : "running", result: null, error: null })
+  );
+  s.get("/runs/sc-cancel/events", (_req, res) =>
+    res.json({
+      events: cancelled ? [{ seq: 1, type: "cancelled" }] : [],
+      status: cancelled ? "cancelled" : "running",
+    })
+  );
+  s.post("/runs/sc-cancel/cancel", (_req, res) => {
+    cancelled = true;
+    res.json({ ok: true });
   });
   s.get("/runs/sc-1", (_req, res) =>
     res.json({
@@ -76,7 +93,7 @@ afterAll(async () => {
   await teardown();
 });
 
-beforeEach(() => { calls = {}; });
+beforeEach(() => { calls = {}; cancelled = false; });
 afterEach(clear);
 
 async function seedCrew() {
@@ -186,6 +203,53 @@ describe("runs (streaming deltas)", () => {
     expect(stream.text).toContain('"agent":"researcher"');
     expect(stream.text).toContain('"text":"hello "');
     expect(stream.text).toContain('"text":"world"');
+  });
+});
+
+describe("runs (cancellation)", () => {
+  test("POST /:id/cancel forwards to the sidecar and returns ok:true for a running run", async () => {
+    const crew = await seedCrew();
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "cancel test" });
+    expect(started.status).toBe(201);
+
+    const r = await request(app).post(`/api/runs/${started.body.runId}/cancel`).set("Authorization", AUTH);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: true });
+  });
+
+  test("cancelling without sign-in is rejected with 401", async () => {
+    const crew = await seedCrew();
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "cancel test" });
+    const r = await request(app).post(`/api/runs/${started.body.runId}/cancel`);
+    expect(r.status).toBe(401);
+  });
+
+  test("cancelling someone else's run 404s", async () => {
+    const crew = await seedCrew();
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "cancel test" });
+    const r = await request(app).post(`/api/runs/${started.body.runId}/cancel`).set("Authorization", "Bearer test:u2");
+    expect(r.status).toBe(404);
+  });
+
+  test("cancelling an already-finished run returns ok:false without calling the sidecar", async () => {
+    const run = await Run.create({
+      ownerId: "u1", crewName: "solo_team", task: "t", status: "done", mode: "live", sidecarRunId: "sc-1",
+    });
+    const r = await request(app).post(`/api/runs/${run.id}/cancel`).set("Authorization", AUTH);
+    expect(r.status).toBe(200);
+    expect(r.body).toEqual({ ok: false });
+  });
+
+  test("SSE relay forwards the cancelled event and syncs the terminal status", async () => {
+    const crew = await seedCrew();
+    const started = await request(app).post("/api/runs").set("Authorization", AUTH).send({ crewId: crew.id, task: "cancel test" });
+    await request(app).post(`/api/runs/${started.body.runId}/cancel`).set("Authorization", AUTH);
+
+    const stream = await request(app).get(`/api/runs/${started.body.runId}/stream`).set("Authorization", AUTH);
+    expect(stream.text).toContain("event: cancelled");
+
+    const run = await Run.findById(started.body.runId);
+    expect(run.status).toBe("cancelled");
   });
 });
 
