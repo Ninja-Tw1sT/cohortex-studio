@@ -58,6 +58,9 @@ flowchart LR
   `EventSource` in an RxJS `Observable`, replaying `delta`/`step`/`done`/`failed` SSE events
   into `NgZone` for change detection. `delta` events render token-by-token as the current
   agent's turn streams in; a `step` event finalizes it with usage/meta once the turn completes.
+  A roster strip in the app shell (`AppComponent`, fetched once on load) shows every agent's
+  name in its assigned color plus its role — the same color-coding used everywhere else
+  (Runs, Tool Shed, the crew diagram) — visible on every page, not duplicated per-component.
 - **Backend** — Express CRUD for `Agent`/`Crew`/`Run` documents in MongoDB, plus a run
   orchestration layer that either replays a stored run's steps from Mongo (**replay mode**,
   no sidecar call) or starts a real run on the sidecar and relays its polled events as SSE
