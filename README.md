@@ -131,6 +131,13 @@ to add one, no code changes required for any of them:
 All three just pre-fill the same form — Save always goes through the same validation, so a
 generated or templated proposal gets no more trust than one typed by hand.
 
+## Crew topology diagram
+Picking a crew on the Run page draws its topology live — agents as nodes in each agent's own
+assigned color (the same swatch used on the Agents/Tool Shed pages), arrows showing hand-off
+order for `sequential` or the hub-and-spoke shape for `supervisor`. During a run the current
+speaker glows, finished agents get a checkmark, and everyone else stays dimmed — a self-drawing
+SVG (`CrewDiagramComponent`), no chart library.
+
 ## Live streaming
 Agent output appears token-by-token, not all at once. The sidecar's per-run event log carries
 `delta` events (one per streamed chunk) alongside the existing `step`/`done` events; the

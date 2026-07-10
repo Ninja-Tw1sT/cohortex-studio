@@ -7,13 +7,14 @@ import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
 import { RunStreamService } from '../core/run-stream.service';
 import { Agent, Crew, LlmConfig, Run, RunStep, Usage } from '../core/models';
+import { CrewDiagramComponent } from './crew-diagram.component';
 
 const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 
 @Component({
   selector: 'app-runs',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, CrewDiagramComponent],
   template: `
     <div class="card">
       <h2>Run a crew</h2>
@@ -62,6 +63,12 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
           assign a saved credential to every agent to run live
         </span>
       </div>
+    </div>
+
+    <div class="card" *ngIf="selectedCrew">
+      <h3>Topology</h3>
+      <app-crew-diagram [crew]="selectedCrew" [agents]="agents"
+        [activeAgent]="streamingAgent" [completedAgents]="completedAgentNames()"></app-crew-diagram>
     </div>
 
     <div class="card" *ngIf="steps.length || finalOutput || running">
@@ -113,6 +120,7 @@ export class RunsComponent implements OnInit {
   crews: Crew[] = [];
   agents: Agent[] = [];
   crewMembers: Agent[] = [];
+  selectedCrew: Crew | null = null;
   assignments: Record<string, string | null> = {};
   history: Run[] = [];
   crewId = '';
@@ -139,12 +147,17 @@ export class RunsComponent implements OnInit {
   onCrewChange(id: string) {
     this.crewId = id;
     const crew = this.crews.find((c) => c.id === id);
+    this.selectedCrew = crew ?? null;
     const names = crew
       ? Array.from(new Set([...crew.agentNames, ...(crew.supervisorName ? [crew.supervisorName] : [])]))
       : [];
     const byName = new Map(this.agents.map((a) => [a.name, a]));
     this.crewMembers = names.map((n) => byName.get(n)).filter((a): a is Agent => !!a);
     this.assignments = {};
+  }
+
+  completedAgentNames(): string[] {
+    return this.steps.map((s) => s.agent);
   }
 
   allCovered() {
