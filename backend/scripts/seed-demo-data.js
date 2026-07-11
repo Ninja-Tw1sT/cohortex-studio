@@ -92,14 +92,19 @@ const TOOLS = [
   { name: "calculator", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
   { name: "word_count", description: "Count the words in a string." },
   // OSINT crew's pipeline: gather (wikipedia_search, ip_geolocation) -> verify
-  // (whois_lookup, wayback_availability) -> synthesize (word_count, current_datetime).
+  // (dns_resolution_check, wayback_availability) -> synthesize (word_count, current_datetime).
   // All five hit real, free, no-key-required public APIs.
   {
+    // srlimit=2 keeps the response under the sidecar's 2000-char tool-output cap
+    // (cohortex.tools._http_tool_fn truncates at resp.text[:2000] — the default
+    // srlimit=10 runs ~4KB and gets cut mid-JSON) — verified against the real
+    // runtime with curl, not just a browser (which masks truncation/redirect
+    // behavior a browser handles transparently but httpx here does not).
     name: "wikipedia_search",
     kind: "http",
     method: "GET",
-    description: "Search Wikipedia for articles matching a query, e.g. 'Ada Lovelace'.",
-    urlTemplate: "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srsearch={input}",
+    description: "Search Wikipedia for articles matching a query, e.g. 'Ada Lovelace'. Returns the top 2 results.",
+    urlTemplate: "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=2&srsearch={input}",
   },
   {
     name: "ip_geolocation",
@@ -109,11 +114,20 @@ const TOOLS = [
     urlTemplate: "https://api.hackertarget.com/geoip/?q={input}",
   },
   {
-    name: "whois_lookup",
+    // rdap.org bootstraps via an HTTP redirect to the TLD's actual registry
+    // server — but cohortex.tools._http_tool_fn calls httpx with
+    // follow_redirects=False (SSRF hardening: never let a tool call silently
+    // hop to an unvalidated host), so a redirect-based WHOIS/RDAP source
+    // returns nothing usable here. DNS-over-HTTPS has no such indirection —
+    // Cloudflare's resolver answers directly with a 200 and a small JSON body.
+    name: "dns_resolution_check",
     kind: "http",
     method: "GET",
-    description: "Get RDAP (modern WHOIS) registration info for a domain, e.g. registrar and creation date — registration age is a useful signal for gauging a source's credibility.",
-    urlTemplate: "https://rdap.org/domain/{input}",
+    description:
+      "Resolve a domain's current A record via Cloudflare's DNS-over-HTTPS resolver — confirms whether a domain " +
+      "currently resolves to live infrastructure, one input among several for judging a source's legitimacy.",
+    urlTemplate: "https://cloudflare-dns.com/dns-query?name={input}&type=A",
+    headers: { Accept: "application/dns-json" },
   },
   {
     name: "wayback_availability",
@@ -133,24 +147,35 @@ const TOOLS = [
   // grounded entirely in public, official reference databases (NIST, MITRE, FIRST.org)
   // — lookups only, never active scanning of a live target and never exploit code.
   {
+    // MITRE's API has no field-filtering option — a full entry runs ~55KB, so the
+    // sidecar's 2000-char cap always truncates it. Verified the truncated prefix
+    // still lands after ID/Name/Description/ExtendedDescription (the useful
+    // summary), just before the verbose Relationships/References tail, so this
+    // is a deliberate, checked tradeoff rather than an unnoticed cutoff.
     name: "cwe_weakness_lookup",
     kind: "http",
     method: "GET",
     description:
       "Look up a Common Weakness Enumeration (CWE) entry by its ID (e.g. '79') from MITRE's public CWE database — " +
       "the industry-standard defensive taxonomy of known software weakness categories, used to classify findings " +
-      "in an authorized security assessment report.",
+      "in an authorized security assessment report. Response is long; only the name and description near the " +
+      "start are guaranteed to come through.",
     urlTemplate: "https://cwe-api.mitre.org/api/v1/cwe/weakness/{input}",
   },
   {
+    // resultsPerPage=1 keeps this under the 2000-char cap with a complete, valid
+    // JSON body — the unbounded default page can run 5+ MB (all matching CVEs in
+    // one response) and would otherwise be truncated into garbage, not just a
+    // long response.
     name: "cve_database_search",
     kind: "http",
     method: "GET",
     description:
       "Search the U.S. National Vulnerability Database (NIST NVD) — the official public U.S. government registry " +
-      "of already-disclosed software vulnerabilities — by product or technology keyword. For authorized defensive " +
-      "research: identifying known, publicly disclosed CVEs that may affect a system's own technology stack.",
-    urlTemplate: "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={input}",
+      "of already-disclosed software vulnerabilities — by product or technology keyword. Returns the single most " +
+      "relevant match; for authorized defensive research: identifying known, publicly disclosed CVEs that may " +
+      "affect a system's own technology stack.",
+    urlTemplate: "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={input}&resultsPerPage=1",
   },
   {
     name: "epss_exploit_prediction_score",
@@ -166,13 +191,19 @@ const TOOLS = [
   // audience background; ui_designer and accessibility_reviewer share these two
   // color tools from different angles (styling direction vs. legibility check).
   {
+    // count=1 (not the obvious 5): TheColorAPI's per-color object is verbose
+    // enough that a 5-color scheme runs ~7KB, well past the 2000-char cap, and
+    // truncation would land mid-way through color #2 or #3 — several incomplete
+    // colors instead of one usable one. count=1 keeps the generated color's full
+    // object plus most of the seed color's, both complete, within the cap; call
+    // it again with a different seed to build up a fuller palette.
     name: "color_scheme_generator",
     kind: "http",
     method: "GET",
     description:
-      "Generate a 5-color analogic palette from a base hex color (e.g. '2E86AB', no '#') via TheColorAPI — for " +
-      "proposing a cohesive styling direction.",
-    urlTemplate: "https://www.thecolorapi.com/scheme?hex={input}&mode=analogic&count=5",
+      "Generate one complementary color from a base hex color (e.g. '2E86AB', no '#') via TheColorAPI, for " +
+      "proposing a cohesive styling direction. Call again with a different hex to build up a fuller palette.",
+    urlTemplate: "https://www.thecolorapi.com/scheme?hex={input}&mode=analogic&count=1",
   },
   {
     name: "color_info_lookup",
@@ -321,7 +352,7 @@ const CREW_TEMPLATES = [
     topology: "sequential",
     agents: [
       { name: "osint_researcher", role: "OSINT Researcher", goal: "gather and organize publicly available information relevant to the request from the provided context", tools: ["wikipedia_search", "ip_geolocation"] },
-      { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: ["whois_lookup", "wayback_availability"] },
+      { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: ["dns_resolution_check", "wayback_availability"] },
       { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary", tools: ["word_count", "current_datetime"] },
     ],
   },
