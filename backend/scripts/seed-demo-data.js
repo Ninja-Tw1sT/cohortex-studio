@@ -91,6 +91,27 @@ const AGENTS = [
 const TOOLS = [
   { name: "calculator", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
   { name: "word_count", description: "Count the words in a string." },
+  // Real local computation, not another API wrapper — see cohortex/cohortex/tools/__init__.py.
+  {
+    name: "contrast_ratio",
+    description:
+      "Compute the WCAG 2.x contrast ratio between two hex colors (e.g. '2E86AB, FFFFFF') and report AA/AAA " +
+      "pass/fail for normal and large text — the actual accessibility standard's formula, not an API's opinion.",
+  },
+  {
+    name: "shannon_entropy",
+    description:
+      "Compute the Shannon entropy (bits/byte) of a string — the standard static-analysis signal analysts use " +
+      "to flag likely packed, encrypted, or compressed content in a binary (plain text/code runs ~4-6 bits/byte; " +
+      "~7.2-8 suggests packing or encryption).",
+  },
+  {
+    name: "defang_iocs",
+    description:
+      "Defang IPs, domains, and URLs in a block of text (1.2.3.4 -> 1[.]2[.]3[.]4, http:// -> hxxp[://]) so " +
+      "indicators of compromise can be shared in a report without becoming live, clickable links — standard " +
+      "SOC/CTI report hygiene.",
+  },
   // OSINT crew's pipeline: gather (wikipedia_search, ip_geolocation) -> verify
   // (dns_resolution_check, wayback_availability) -> synthesize (word_count, current_datetime).
   // All five hit real, free, no-key-required public APIs.
@@ -279,8 +300,11 @@ const CREW_TEMPLATES = [
       {
         name: "security_report_writer",
         role: "Security Report Writer",
-        goal: "summarize findings into a clear, prioritized, timestamped report with concrete remediation recommendations for the system owner's security team",
-        tools: ["word_count", "current_datetime"],
+        goal:
+          "summarize findings into a clear, prioritized, timestamped report with concrete remediation " +
+          "recommendations for the system owner's security team, defanging any IPs/domains/URLs mentioned so " +
+          "the report can be shared without its indicators becoming live, clickable links",
+        tools: ["word_count", "current_datetime", "defang_iocs"],
       },
     ],
   },
@@ -304,8 +328,11 @@ const CREW_TEMPLATES = [
       {
         name: "accessibility_reviewer",
         role: "Accessibility Reviewer",
-        goal: "review the design for accessibility issues (contrast, semantics, keyboard navigation) and list fixes, checking proposed colors' suggested contrast text for legibility",
-        tools: ["color_info_lookup"],
+        goal:
+          "review the design for accessibility issues (contrast, semantics, keyboard navigation) and list fixes, " +
+          "computing the actual WCAG 2.x contrast ratio for proposed foreground/background color pairs and " +
+          "reporting whether they pass AA/AAA — not just checking an API's suggested contrast color",
+        tools: ["color_info_lookup", "contrast_ratio"],
       },
     ],
   },
@@ -323,10 +350,12 @@ const CREW_TEMPLATES = [
         role: "Static Analysis Engineer",
         goal:
           "describe what a piece of compiled code likely does based on structure, strings, and imports, without " +
-          "executing it, and cross-reference any identified libraries/components against known CWE weakness " +
-          "categories and public CVEs. Defensive analysis of a sample the user is authorized to examine — " +
-          "produces a description for defenders, never runnable exploit code.",
-        tools: ["cwe_weakness_lookup", "cve_database_search"],
+          "executing it; compute the Shannon entropy of any suspicious extracted string/data blob to flag likely " +
+          "packed, encrypted, or compressed sections (a standard static-analysis signal), and cross-reference any " +
+          "identified libraries/components against known CWE weakness categories and public CVEs. Defensive " +
+          "analysis of a sample the user is authorized to examine — produces a description for defenders, never " +
+          "runnable exploit code.",
+        tools: ["cwe_weakness_lookup", "cve_database_search", "shannon_entropy"],
       },
       {
         name: "dynamic_analyst",
@@ -341,8 +370,10 @@ const CREW_TEMPLATES = [
       {
         name: "re_report_writer",
         role: "Reverse Engineering Report Writer",
-        goal: "summarize findings into a clear, timestamped technical report suitable for defenders or researchers",
-        tools: ["word_count", "current_datetime"],
+        goal:
+          "summarize findings into a clear, timestamped technical report suitable for defenders or researchers, " +
+          "defanging any network indicators (IPs, domains, URLs) mentioned so the report can be shared safely",
+        tools: ["word_count", "current_datetime", "defang_iocs"],
       },
     ],
   },
@@ -353,7 +384,7 @@ const CREW_TEMPLATES = [
     agents: [
       { name: "osint_researcher", role: "OSINT Researcher", goal: "gather and organize publicly available information relevant to the request from the provided context", tools: ["wikipedia_search", "ip_geolocation"] },
       { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: ["dns_resolution_check", "wayback_availability"] },
-      { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary", tools: ["word_count", "current_datetime"] },
+      { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary, defanging any IPs/domains/URLs mentioned so the summary can be shared without its indicators becoming live, clickable links", tools: ["word_count", "current_datetime", "defang_iocs"] },
     ],
   },
 ];
