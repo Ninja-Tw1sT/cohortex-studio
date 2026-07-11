@@ -162,6 +162,27 @@ const TOOLS = [
       "exploitation likelihood, used by security teams worldwide to prioritize patching, not to attack anything.",
     urlTemplate: "https://api.first.org/data/v1/epss?cve={input}",
   },
+  // web_design_crew's pipeline: ux_researcher reuses wikipedia_search for domain/
+  // audience background; ui_designer and accessibility_reviewer share these two
+  // color tools from different angles (styling direction vs. legibility check).
+  {
+    name: "color_scheme_generator",
+    kind: "http",
+    method: "GET",
+    description:
+      "Generate a 5-color analogic palette from a base hex color (e.g. '2E86AB', no '#') via TheColorAPI — for " +
+      "proposing a cohesive styling direction.",
+    urlTemplate: "https://www.thecolorapi.com/scheme?hex={input}&mode=analogic&count=5",
+  },
+  {
+    name: "color_info_lookup",
+    kind: "http",
+    method: "GET",
+    description:
+      "Get details for a hex color (e.g. '2E86AB', no '#') via TheColorAPI — name, RGB/HSL values, and a " +
+      "suggested high-contrast text color — useful for checking a color choice's legibility.",
+    urlTemplate: "https://www.thecolorapi.com/id?hex={input}",
+  },
 ];
 
 const CREWS = [
@@ -234,22 +255,64 @@ const CREW_TEMPLATES = [
   },
   {
     name: "web_design_crew",
-    description: "UX research, UI design direction, and an accessibility pass.",
+    description: "UX research grounded in real background knowledge, UI design direction with generated color palettes, and an accessibility pass with legibility data.",
     topology: "sequential",
     agents: [
-      { name: "ux_researcher", role: "UX Researcher", goal: "define user needs, goals, and key flows for the requested page or product", tools: [] },
-      { name: "ui_designer", role: "UI Designer", goal: "propose a clear visual layout, component structure, and styling direction", tools: [] },
-      { name: "accessibility_reviewer", role: "Accessibility Reviewer", goal: "review the design for accessibility issues (contrast, semantics, keyboard navigation) and list fixes", tools: [] },
+      {
+        name: "ux_researcher",
+        role: "UX Researcher",
+        goal: "define user needs, goals, and key flows for the requested page or product, using background research to ground assumptions instead of guessing",
+        tools: ["wikipedia_search"],
+      },
+      {
+        name: "ui_designer",
+        role: "UI Designer",
+        goal: "propose a clear visual layout, component structure, and styling direction, using a generated color palette and color details as a concrete starting point",
+        tools: ["color_scheme_generator", "color_info_lookup"],
+      },
+      {
+        name: "accessibility_reviewer",
+        role: "Accessibility Reviewer",
+        goal: "review the design for accessibility issues (contrast, semantics, keyboard navigation) and list fixes, checking proposed colors' suggested contrast text for legibility",
+        tools: ["color_info_lookup"],
+      },
     ],
   },
   {
     name: "reversing_crew",
-    description: "Static and dynamic analysis of a sample, then a technical report — for authorized malware/software research.",
+    description:
+      "Static and dynamic analysis of a sample the user already possesses and is authorized to examine, cross-" +
+      "referenced against public CWE/CVE/EPSS data, then a technical report. Defensive research only — for " +
+      "malware analysts, incident responders, and software researchers documenting what a sample does; this crew " +
+      "never executes anything itself and never produces exploit or attack code.",
     topology: "sequential",
     agents: [
-      { name: "static_analyst", role: "Static Analysis Engineer", goal: "describe what a piece of compiled code likely does based on structure, strings, and imports, without executing it", tools: [] },
-      { name: "dynamic_analyst", role: "Dynamic Analysis Engineer", goal: "describe expected runtime behavior and how to safely observe it in an isolated sandbox", tools: [] },
-      { name: "re_report_writer", role: "Reverse Engineering Report Writer", goal: "summarize findings into a clear technical report suitable for defenders or researchers", tools: ["word_count"] },
+      {
+        name: "static_analyst",
+        role: "Static Analysis Engineer",
+        goal:
+          "describe what a piece of compiled code likely does based on structure, strings, and imports, without " +
+          "executing it, and cross-reference any identified libraries/components against known CWE weakness " +
+          "categories and public CVEs. Defensive analysis of a sample the user is authorized to examine — " +
+          "produces a description for defenders, never runnable exploit code.",
+        tools: ["cwe_weakness_lookup", "cve_database_search"],
+      },
+      {
+        name: "dynamic_analyst",
+        role: "Dynamic Analysis Engineer",
+        goal:
+          "describe expected runtime behavior and how to safely observe it in an isolated, disposable sandbox " +
+          "(e.g. an offline VM), and check whether related CVEs are known to be actively exploited (EPSS) to " +
+          "inform how the finding should be prioritized. Defensive analysis only — describes safe observation " +
+          "methodology, never instructions to deploy or weaponize anything.",
+        tools: ["cve_database_search", "epss_exploit_prediction_score"],
+      },
+      {
+        name: "re_report_writer",
+        role: "Reverse Engineering Report Writer",
+        goal: "summarize findings into a clear, timestamped technical report suitable for defenders or researchers",
+        tools: ["word_count", "current_datetime"],
+      },
     ],
   },
   {
