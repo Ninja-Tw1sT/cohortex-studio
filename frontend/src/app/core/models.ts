@@ -75,6 +75,24 @@ export interface Crew {
   maxHandoffChars: number | null;
 }
 
+// One proposed agent within a crew template — the wizard creates a real
+// Agent from this (if the user doesn't already have one by that name) with
+// `tools` toggleable before creation, not fixed by the template.
+export interface CrewTemplateAgent {
+  name: string;
+  role: string;
+  goal: string;
+  tools: string[];
+}
+
+export interface CrewTemplate {
+  id?: string;
+  name: string;
+  description: string;
+  topology: Topology;
+  agents: CrewTemplateAgent[];
+}
+
 export interface Usage {
   prompt_tokens: number;
   completion_tokens: number;

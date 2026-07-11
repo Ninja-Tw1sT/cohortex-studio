@@ -11,6 +11,7 @@ require("dotenv").config();
 const { connectDb, disconnectDb } = require("../src/config/db");
 const Agent = require("../src/models/Agent");
 const Crew = require("../src/models/Crew");
+const CrewTemplate = require("../src/models/CrewTemplate");
 const Run = require("../src/models/Run");
 const Tool = require("../src/models/Tool");
 const { PALETTE } = require("../src/util/palette");
@@ -106,6 +107,62 @@ const CREWS = [
     agentNames: ["coder", "writer", "critic"],
     supervisorName: "planner",
     maxRounds: 4,
+  },
+];
+
+// Starter crews for common workflows, seeded into the shared demo namespace
+// so they show up in the wizard for every visitor. "tools" here are what get
+// pre-checked when the wizard proposes each agent — still toggleable per use.
+const CREW_TEMPLATES = [
+  {
+    name: "software_dev_crew",
+    description: "Architect designs, engineer implements, reviewer checks the work.",
+    topology: "sequential",
+    agents: [
+      { name: "architect", role: "Software Architect", goal: "design a clear, minimal implementation plan for the requested feature, calling out key files/interfaces to change", tools: [] },
+      { name: "engineer", role: "Software Engineer", goal: "implement the plan with small, correct, well-tested code changes", tools: ["calculator"] },
+      { name: "reviewer", role: "Code Reviewer", goal: "review the implementation for correctness, security, and simplicity, and list concrete fixes", tools: [] },
+    ],
+  },
+  {
+    name: "security_research_crew",
+    description: "Threat modeling, vulnerability analysis, and a prioritized findings report — for authorized research and defensive use.",
+    topology: "sequential",
+    agents: [
+      { name: "threat_modeler", role: "Threat Modeler", goal: "identify the most likely attack surfaces and threat scenarios for the described system, for defensive research purposes", tools: [] },
+      { name: "vuln_analyst", role: "Vulnerability Analyst", goal: "analyze the described system or code for known vulnerability classes and explain the risk and impact of each", tools: [] },
+      { name: "security_report_writer", role: "Security Report Writer", goal: "summarize findings into a clear, prioritized report with remediation recommendations", tools: ["word_count"] },
+    ],
+  },
+  {
+    name: "web_design_crew",
+    description: "UX research, UI design direction, and an accessibility pass.",
+    topology: "sequential",
+    agents: [
+      { name: "ux_researcher", role: "UX Researcher", goal: "define user needs, goals, and key flows for the requested page or product", tools: [] },
+      { name: "ui_designer", role: "UI Designer", goal: "propose a clear visual layout, component structure, and styling direction", tools: [] },
+      { name: "accessibility_reviewer", role: "Accessibility Reviewer", goal: "review the design for accessibility issues (contrast, semantics, keyboard navigation) and list fixes", tools: [] },
+    ],
+  },
+  {
+    name: "reversing_crew",
+    description: "Static and dynamic analysis of a sample, then a technical report — for authorized malware/software research.",
+    topology: "sequential",
+    agents: [
+      { name: "static_analyst", role: "Static Analysis Engineer", goal: "describe what a piece of compiled code likely does based on structure, strings, and imports, without executing it", tools: [] },
+      { name: "dynamic_analyst", role: "Dynamic Analysis Engineer", goal: "describe expected runtime behavior and how to safely observe it in an isolated sandbox", tools: [] },
+      { name: "re_report_writer", role: "Reverse Engineering Report Writer", goal: "summarize findings into a clear technical report suitable for defenders or researchers", tools: ["word_count"] },
+    ],
+  },
+  {
+    name: "osint_crew",
+    description: "Gather, verify, and synthesize publicly available information into a sourced summary.",
+    topology: "sequential",
+    agents: [
+      { name: "osint_researcher", role: "OSINT Researcher", goal: "gather and organize publicly available information relevant to the request from the provided context", tools: [] },
+      { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: [] },
+      { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary", tools: ["word_count"] },
+    ],
   },
 ];
 
@@ -231,6 +288,14 @@ async function upsertCrew(c) {
   );
 }
 
+async function upsertCrewTemplate(t) {
+  return CrewTemplate.findOneAndUpdate(
+    { ownerId: null, name: t.name },
+    { ownerId: null, ...t },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+}
+
 async function seedReplayRun(r) {
   // Demo replay runs aren't unique-indexed, so clear prior seeded copies for
   // this crew+task before inserting a fresh one — keeps re-runs idempotent.
@@ -258,6 +323,9 @@ async function main() {
 
   const crews = await Promise.all(CREWS.map(upsertCrew));
   console.log(`crews: upserted ${crews.length} (${crews.map((c) => c.name).join(", ")})`);
+
+  const crewTemplates = await Promise.all(CREW_TEMPLATES.map(upsertCrewTemplate));
+  console.log(`crew templates: upserted ${crewTemplates.length} (${crewTemplates.map((t) => t.name).join(", ")})`);
 
   const runs = await Promise.all(REPLAY_RUNS.map(seedReplayRun));
   console.log(`replay runs: seeded ${runs.length}`);

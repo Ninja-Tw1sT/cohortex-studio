@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { Agent, Crew, GeneratedTool, LlmConfig, Run, RunStats, Tool } from './models';
+import { Agent, Crew, CrewTemplate, GeneratedTool, LlmConfig, Run, RunStats, Tool } from './models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -30,6 +30,16 @@ export class ApiService {
   createCrew(c: Partial<Crew>): Observable<Crew> { return this.http.post<Crew>(`${this.base}/crews`, c); }
   updateCrew(id: string, c: Partial<Crew>): Observable<Crew> { return this.http.put<Crew>(`${this.base}/crews/${id}`, c); }
   deleteCrew(id: string): Observable<unknown> { return this.http.delete(`${this.base}/crews/${id}`); }
+
+  // crew templates (wizard)
+  crewTemplates(): Observable<CrewTemplate[]> { return this.http.get<CrewTemplate[]>(`${this.base}/crew-templates`); }
+  createCrewTemplate(t: Partial<CrewTemplate>): Observable<CrewTemplate> {
+    return this.http.post<CrewTemplate>(`${this.base}/crew-templates`, t);
+  }
+  updateCrewTemplate(id: string, t: Partial<CrewTemplate>): Observable<CrewTemplate> {
+    return this.http.put<CrewTemplate>(`${this.base}/crew-templates/${id}`, t);
+  }
+  deleteCrewTemplate(id: string): Observable<unknown> { return this.http.delete(`${this.base}/crew-templates/${id}`); }
 
   // runs
   runs(): Observable<Run[]> { return this.http.get<Run[]>(`${this.base}/runs`); }

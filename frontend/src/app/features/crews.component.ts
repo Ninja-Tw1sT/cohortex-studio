@@ -1,6 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { downloadJson, readJsonFile, stripMeta } from '../core/json-io';
@@ -11,11 +12,14 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 @Component({
   selector: 'app-crews',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="card">
       <h2>Crews</h2>
-      <p class="muted">Compose agents into a crew and pick how they collaborate. No YAML — it's all config.</p>
+      <p class="muted">
+        Compose agents into a crew and pick how they collaborate. No YAML — it's all config.
+        Prefer a guided setup? Try the <a routerLink="/wizard">Crew Wizard</a>.
+      </p>
       <table>
         <tr><th>Name</th><th>Topology</th><th>Agents</th><th></th></tr>
         <tr *ngFor="let c of crews">

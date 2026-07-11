@@ -4,6 +4,7 @@ const cors = require("cors");
 const health = require("./routes/health");
 const agents = require("./routes/agents");
 const crews = require("./routes/crews");
+const crewTemplates = require("./routes/crewTemplates");
 const runs = require("./routes/runs");
 const tools = require("./routes/tools");
 const errorHandler = require("./middleware/errorHandler");
@@ -27,6 +28,7 @@ function createApp() {
   app.use("/api", health);
   app.use("/api/agents", agents);
   app.use("/api/crews", crews);
+  app.use("/api/crew-templates", crewTemplates);
   app.use("/api/runs", runs);
   app.use("/api/tools", tools);
 

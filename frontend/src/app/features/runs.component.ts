@@ -1,7 +1,8 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
@@ -114,6 +115,7 @@ const errMsg = (e: any) => e?.error?.error || e?.message || 'request failed';
 export class RunsComponent implements OnInit {
   private api = inject(ApiService);
   private streamer = inject(RunStreamService);
+  private route = inject(ActivatedRoute);
   auth = inject(AuthService);
   llmConfig = inject(LlmConfigService);
 
@@ -137,8 +139,28 @@ export class RunsComponent implements OnInit {
   error = '';
 
   ngOnInit() {
-    this.api.crews().subscribe({ next: (c) => (this.crews = c) });
-    this.api.agents().subscribe({ next: (a) => (this.agents = a) });
+    // Arriving from the Crew Wizard: ?crewId=... pre-selects the crew, and
+    // any per-agent credential assignments ride along as router state
+    // (not the URL — they're just localStorage credential ids, not secrets,
+    // but there's no reason to put them in a shareable/bookmarkable link).
+    const pendingCrewId = this.route.snapshot.queryParamMap.get('crewId');
+    const pendingAssignments = (history.state?.['assignments'] as Record<string, string | null> | undefined) ?? null;
+
+    forkJoin({ crews: this.api.crews(), agents: this.api.agents() }).subscribe({
+      next: ({ crews, agents }) => {
+        this.crews = crews;
+        this.agents = agents;
+        if (pendingCrewId && crews.some((c) => c.id === pendingCrewId)) {
+          this.onCrewChange(pendingCrewId);
+          this.mode = 'live';
+          if (pendingAssignments) {
+            for (const [name, credId] of Object.entries(pendingAssignments)) {
+              if (credId) this.assignments[name] = credId;
+            }
+          }
+        }
+      },
+    });
     this.loadHistory();
   }
 
