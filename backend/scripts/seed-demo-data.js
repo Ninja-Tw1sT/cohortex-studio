@@ -129,6 +129,39 @@ const TOOLS = [
     description: "Get the current UTC date and time — useful for timestamping a report. No input needed.",
     urlTemplate: "https://timeapi.io/api/time/current/zone?timeZone=UTC",
   },
+  // security_research_crew's pipeline: authorized, defensive vulnerability research
+  // grounded entirely in public, official reference databases (NIST, MITRE, FIRST.org)
+  // — lookups only, never active scanning of a live target and never exploit code.
+  {
+    name: "cwe_weakness_lookup",
+    kind: "http",
+    method: "GET",
+    description:
+      "Look up a Common Weakness Enumeration (CWE) entry by its ID (e.g. '79') from MITRE's public CWE database — " +
+      "the industry-standard defensive taxonomy of known software weakness categories, used to classify findings " +
+      "in an authorized security assessment report.",
+    urlTemplate: "https://cwe-api.mitre.org/api/v1/cwe/weakness/{input}",
+  },
+  {
+    name: "cve_database_search",
+    kind: "http",
+    method: "GET",
+    description:
+      "Search the U.S. National Vulnerability Database (NIST NVD) — the official public U.S. government registry " +
+      "of already-disclosed software vulnerabilities — by product or technology keyword. For authorized defensive " +
+      "research: identifying known, publicly disclosed CVEs that may affect a system's own technology stack.",
+    urlTemplate: "https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={input}",
+  },
+  {
+    name: "epss_exploit_prediction_score",
+    kind: "http",
+    method: "GET",
+    description:
+      "Get the published Exploit Prediction Scoring System (EPSS) score for a CVE ID from FIRST.org (Forum of " +
+      "Incident Response and Security Teams) — an industry-standard defensive metric estimating real-world " +
+      "exploitation likelihood, used by security teams worldwide to prioritize patching, not to attack anything.",
+    urlTemplate: "https://api.first.org/data/v1/epss?cve={input}",
+  },
 ];
 
 const CREWS = [
@@ -164,12 +197,39 @@ const CREW_TEMPLATES = [
   },
   {
     name: "security_research_crew",
-    description: "Threat modeling, vulnerability analysis, and a prioritized findings report — for authorized research and defensive use.",
+    description:
+      "Threat modeling grounded in public CWE/CVE data, vulnerability risk scoring via EPSS, and a prioritized " +
+      "remediation report. Authorized defensive security research (blue-team) only — every tool is a read-only " +
+      "lookup against a public reference database (NIST, MITRE, FIRST.org); nothing here scans a live target or " +
+      "produces exploit code.",
     topology: "sequential",
     agents: [
-      { name: "threat_modeler", role: "Threat Modeler", goal: "identify the most likely attack surfaces and threat scenarios for the described system, for defensive research purposes", tools: [] },
-      { name: "vuln_analyst", role: "Vulnerability Analyst", goal: "analyze the described system or code for known vulnerability classes and explain the risk and impact of each", tools: [] },
-      { name: "security_report_writer", role: "Security Report Writer", goal: "summarize findings into a clear, prioritized report with remediation recommendations", tools: ["word_count"] },
+      {
+        name: "threat_modeler",
+        role: "Threat Modeler",
+        goal:
+          "identify the most likely attack surfaces and threat scenarios for the described system, grounded in " +
+          "known CWE weakness categories and publicly disclosed CVEs. Authorized defensive threat-modeling only — " +
+          "the output is a threat model for the system owner's own security team, never attack instructions or " +
+          "exploit code.",
+        tools: ["cwe_weakness_lookup", "cve_database_search"],
+      },
+      {
+        name: "vuln_analyst",
+        role: "Vulnerability Analyst",
+        goal:
+          "analyze the described system or code against known, publicly disclosed vulnerability classes (CVE) and " +
+          "their published real-world exploitation likelihood (EPSS), explaining risk and impact for the system " +
+          "owner's security team. Authorized defensive risk analysis only — prioritizing what to patch, not how " +
+          "to attack anything.",
+        tools: ["cve_database_search", "epss_exploit_prediction_score"],
+      },
+      {
+        name: "security_report_writer",
+        role: "Security Report Writer",
+        goal: "summarize findings into a clear, prioritized, timestamped report with concrete remediation recommendations for the system owner's security team",
+        tools: ["word_count", "current_datetime"],
+      },
     ],
   },
   {
