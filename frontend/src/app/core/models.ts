@@ -5,7 +5,7 @@ export type Topology = (typeof TOPOLOGIES)[number];
 // The names cohortex's ReAct loop always resolves via its global registry (see
 // cohortex/cohortex/tools/__init__.py) — a "builtin" kind Tool Shed entry must
 // use one of these.
-export const BUILTIN_TOOLS = ['calculator', 'word_count', 'contrast_ratio', 'shannon_entropy', 'defang_iocs'] as const;
+export const BUILTIN_TOOLS = ['calculator', 'word_count', 'contrast_ratio', 'shannon_entropy', 'defang_iocs', 'android_permission_risk'] as const;
 export const TOOL_KINDS = ['builtin', 'http'] as const;
 export const HTTP_METHODS = ['GET', 'POST'] as const;
 // Suggested starting points for the Tool Shed's category field — not an enum;

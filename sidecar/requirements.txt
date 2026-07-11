@@ -4,7 +4,7 @@
 #   pip install -e ../../cohortex
 # Production (Cloud Run): pin to a specific commit so deploys are reproducible —
 # update this SHA when you want to pick up newer Cohortex changes.
-cohortex @ git+https://github.com/Ninja-Tw1sT/cohortex.git@102f240daa1f75c4db0d62641ebbb3aaba0676b5
+cohortex @ git+https://github.com/Ninja-Tw1sT/cohortex.git@a6c1e551514afdfab6a0b1c7d51850dda11d9bdd
 
 fastapi~=0.139
 uvicorn[standard]~=0.49

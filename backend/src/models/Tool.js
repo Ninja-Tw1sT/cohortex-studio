@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 // The names cohortex.tools registers globally via @tool (see
 // cohortex/cohortex/tools/__init__.py) — the only "builtin" kind names.
-const BUILTIN_NAMES = ["calculator", "word_count", "contrast_ratio", "shannon_entropy", "defang_iocs"];
+const BUILTIN_NAMES = ["calculator", "word_count", "contrast_ratio", "shannon_entropy", "defang_iocs", "android_permission_risk"];
 const KINDS = ["builtin", "http"];
 const METHODS = ["GET", "POST"];
 // User-defined (non-builtin) tool names: identifier-shaped, so they're safe to

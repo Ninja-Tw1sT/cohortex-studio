@@ -115,6 +115,14 @@ const TOOLS = [
       "indicators of compromise can be shared in a report without becoming live, clickable links — standard " +
       "SOC/CTI report hygiene.",
   },
+  {
+    name: "android_permission_risk",
+    category: "Security Analysis",
+    description:
+      "Classify a comma/newline-separated list of Android permissions (e.g. 'android.permission.CAMERA, " +
+      "android.permission.READ_SMS') against Android's official dangerous-permission groups — real platform " +
+      "data, not a guess — flagging which requested permissions are high-risk and worth justifying in a review.",
+  },
   // OSINT crew's pipeline: gather (wikipedia_search, ip_geolocation) -> verify
   // (dns_resolution_check, wayback_availability) -> synthesize (word_count, current_datetime).
   // All five hit real, free, no-key-required public APIs.
@@ -386,6 +394,46 @@ const CREW_TEMPLATES = [
         goal:
           "summarize findings into a clear, timestamped technical report suitable for defenders or researchers, " +
           "defanging any network indicators (IPs, domains, URLs) mentioned so the report can be shared safely",
+        tools: ["word_count", "current_datetime", "defang_iocs"],
+      },
+    ],
+  },
+  {
+    name: "android_security_crew",
+    description:
+      "Manifest/permission risk review, static analysis of app code, and a prioritized report — for authorized " +
+      "Android app security research (your own app, or one you're explicitly permitted to assess). Defensive " +
+      "only: no execution, no exploit code, no interaction with a real device or the Play Store.",
+    topology: "sequential",
+    agents: [
+      {
+        name: "permission_auditor",
+        role: "Android Manifest & Permission Auditor",
+        goal:
+          "review the permissions and exported components described in the input, classify each requested " +
+          "permission's real Android risk level, and flag likely over-privileged or improperly-exported " +
+          "components (see CWE-926, CWE-927). Authorized review of an app you own or are explicitly permitted " +
+          "to assess — output is a findings list for the app's own developers, never attack instructions.",
+        tools: ["android_permission_risk", "cwe_weakness_lookup"],
+      },
+      {
+        name: "static_analyst",
+        role: "Android Static Analysis Engineer",
+        goal:
+          "describe what decompiled code, extracted strings, or a native library likely does based on structure " +
+          "and imports, without executing it; compute Shannon entropy on any suspicious extracted string/blob to " +
+          "flag likely packed or obfuscated DEX/native sections, and cross-reference identified third-party SDKs " +
+          "or libraries against known CVEs. Defensive analysis of a sample the user is authorized to examine — " +
+          "produces a description for the app's developers, never runnable exploit code.",
+        tools: ["shannon_entropy", "cve_database_search"],
+      },
+      {
+        name: "mobile_report_writer",
+        role: "Mobile Security Report Writer",
+        goal:
+          "summarize findings into a clear, prioritized, timestamped report with concrete remediation " +
+          "recommendations for the app's development team, defanging any network indicators mentioned so the " +
+          "report can be shared safely",
         tools: ["word_count", "current_datetime", "defang_iocs"],
       },
     ],
