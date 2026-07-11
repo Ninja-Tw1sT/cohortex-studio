@@ -89,17 +89,19 @@ const AGENTS = [
 
 // The Tool Shed catalog — every agent's `tools` above must name one of these.
 const TOOLS = [
-  { name: "calculator", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
-  { name: "word_count", description: "Count the words in a string." },
+  { name: "calculator", category: "Utility", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
+  { name: "word_count", category: "Utility", description: "Count the words in a string." },
   // Real local computation, not another API wrapper — see cohortex/cohortex/tools/__init__.py.
   {
     name: "contrast_ratio",
+    category: "Design & Accessibility",
     description:
       "Compute the WCAG 2.x contrast ratio between two hex colors (e.g. '2E86AB, FFFFFF') and report AA/AAA " +
       "pass/fail for normal and large text — the actual accessibility standard's formula, not an API's opinion.",
   },
   {
     name: "shannon_entropy",
+    category: "Security Analysis",
     description:
       "Compute the Shannon entropy (bits/byte) of a string — the standard static-analysis signal analysts use " +
       "to flag likely packed, encrypted, or compressed content in a binary (plain text/code runs ~4-6 bits/byte; " +
@@ -107,6 +109,7 @@ const TOOLS = [
   },
   {
     name: "defang_iocs",
+    category: "Utility",
     description:
       "Defang IPs, domains, and URLs in a block of text (1.2.3.4 -> 1[.]2[.]3[.]4, http:// -> hxxp[://]) so " +
       "indicators of compromise can be shared in a report without becoming live, clickable links — standard " +
@@ -123,6 +126,7 @@ const TOOLS = [
     // behavior a browser handles transparently but httpx here does not).
     name: "wikipedia_search",
     kind: "http",
+    category: "Research & OSINT",
     method: "GET",
     description: "Search Wikipedia for articles matching a query, e.g. 'Ada Lovelace'. Returns the top 2 results.",
     urlTemplate: "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=2&srsearch={input}",
@@ -130,6 +134,7 @@ const TOOLS = [
   {
     name: "ip_geolocation",
     kind: "http",
+    category: "Research & OSINT",
     method: "GET",
     description: "Get geolocation and network info for an IP address or hostname.",
     urlTemplate: "https://api.hackertarget.com/geoip/?q={input}",
@@ -143,6 +148,7 @@ const TOOLS = [
     // Cloudflare's resolver answers directly with a 200 and a small JSON body.
     name: "dns_resolution_check",
     kind: "http",
+    category: "Research & OSINT",
     method: "GET",
     description:
       "Resolve a domain's current A record via Cloudflare's DNS-over-HTTPS resolver — confirms whether a domain " +
@@ -153,6 +159,7 @@ const TOOLS = [
   {
     name: "wayback_availability",
     kind: "http",
+    category: "Research & OSINT",
     method: "GET",
     description: "Check whether a URL has an archived snapshot in the Internet Archive's Wayback Machine, and how far back it goes.",
     urlTemplate: "https://archive.org/wayback/available?url={input}",
@@ -160,6 +167,7 @@ const TOOLS = [
   {
     name: "current_datetime",
     kind: "http",
+    category: "Utility",
     method: "GET",
     description: "Get the current UTC date and time — useful for timestamping a report. No input needed.",
     urlTemplate: "https://timeapi.io/api/time/current/zone?timeZone=UTC",
@@ -175,6 +183,7 @@ const TOOLS = [
     // is a deliberate, checked tradeoff rather than an unnoticed cutoff.
     name: "cwe_weakness_lookup",
     kind: "http",
+    category: "Security Analysis",
     method: "GET",
     description:
       "Look up a Common Weakness Enumeration (CWE) entry by its ID (e.g. '79') from MITRE's public CWE database — " +
@@ -190,6 +199,7 @@ const TOOLS = [
     // long response.
     name: "cve_database_search",
     kind: "http",
+    category: "Security Analysis",
     method: "GET",
     description:
       "Search the U.S. National Vulnerability Database (NIST NVD) — the official public U.S. government registry " +
@@ -201,6 +211,7 @@ const TOOLS = [
   {
     name: "epss_exploit_prediction_score",
     kind: "http",
+    category: "Security Analysis",
     method: "GET",
     description:
       "Get the published Exploit Prediction Scoring System (EPSS) score for a CVE ID from FIRST.org (Forum of " +
@@ -220,6 +231,7 @@ const TOOLS = [
     // it again with a different seed to build up a fuller palette.
     name: "color_scheme_generator",
     kind: "http",
+    category: "Design & Accessibility",
     method: "GET",
     description:
       "Generate one complementary color from a base hex color (e.g. '2E86AB', no '#') via TheColorAPI, for " +
@@ -229,6 +241,7 @@ const TOOLS = [
   {
     name: "color_info_lookup",
     kind: "http",
+    category: "Design & Accessibility",
     method: "GET",
     description:
       "Get details for a hex color (e.g. '2E86AB', no '#') via TheColorAPI — name, RGB/HSL values, and a " +

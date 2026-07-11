@@ -5,7 +5,7 @@ import { RouterLink } from '@angular/router';
 import { ApiService } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { LlmConfigService } from '../core/llm-config.service';
-import { Agent, BUILTIN_TOOLS, HTTP_METHODS, TOOL_KINDS, Tool } from '../core/models';
+import { Agent, BUILTIN_TOOLS, HTTP_METHODS, SUGGESTED_TOOL_CATEGORIES, TOOL_KINDS, Tool } from '../core/models';
 import { TOOL_TEMPLATES, ToolTemplate } from '../core/tool-templates';
 import { SCHEMA_PROVIDERS, SchemaProvider, schemaFor } from '../core/tool-schema-export';
 
@@ -32,9 +32,17 @@ const formatHeaders = (h?: Record<string, string>) =>
     <div class="card">
       <h2>Tool Shed</h2>
       <p class="muted">Load or generate the tools your agents can call. Assign them by name on the Agents screen.</p>
+      <div class="row" style="align-items:center; margin-bottom:8px">
+        <div style="flex:0 0 auto"><label>Category</label>
+          <select [(ngModel)]="categoryFilter">
+            <option [ngValue]="null">All ({{ tools.length }})</option>
+            <option *ngFor="let c of categories()" [ngValue]="c">{{ c }} ({{ toolsInCategory(c).length }})</option>
+          </select>
+        </div>
+      </div>
       <table>
-        <tr><th>Name</th><th>Kind</th><th>Details</th><th></th></tr>
-        <ng-container *ngFor="let t of tools">
+        <tr><th>Name</th><th>Category</th><th>Kind</th><th>Details</th><th></th></tr>
+        <ng-container *ngFor="let t of filteredTools()">
           <tr>
             <td>
               <span class="badge violet">{{ t.name }}</span>
@@ -43,6 +51,7 @@ const formatHeaders = (h?: Record<string, string>) =>
                       [style.background]="a.color" [style.color]="a.color"></span>
               </span>
             </td>
+            <td><span class="badge magenta">{{ t.category || 'General' }}</span></td>
             <td><span class="badge" [class.cyan]="t.kind==='http'">{{ t.kind }}</span></td>
             <td class="muted">
               <ng-container *ngIf="t.kind === 'http'; else builtinDesc">
@@ -60,7 +69,7 @@ const formatHeaders = (h?: Record<string, string>) =>
             </td>
           </tr>
           <tr *ngIf="schemaOpenFor === t.id">
-            <td colspan="4">
+            <td colspan="5">
               <div class="row" style="align-items:center">
                 <div style="flex:0 0 auto"><label>As</label>
                   <select [(ngModel)]="schemaProvider">
@@ -138,6 +147,12 @@ const formatHeaders = (h?: Record<string, string>) =>
             <option *ngFor="let m of methods" [ngValue]="m">{{ m }}</option>
           </select>
         </div>
+        <div><label>Category</label>
+          <input [(ngModel)]="draft.category" list="tool-categories" placeholder="Utility" />
+          <datalist id="tool-categories">
+            <option *ngFor="let c of categories()" [value]="c"></option>
+          </datalist>
+        </div>
       </div>
       <ng-container *ngIf="draft.kind === 'http'">
         <label>URL template</label>
@@ -182,6 +197,7 @@ export class ToolShedComponent implements OnInit {
   agents: Agent[] = [];
   draft: Draft = this.blank();
   error = '';
+  categoryFilter: string | null = null;
 
   schemaOpenFor: string | null = null;
   schemaProvider: SchemaProvider = 'openai';
@@ -203,6 +219,19 @@ export class ToolShedComponent implements OnInit {
     return this.agents.filter((a) => a.tools.includes(t.name));
   }
 
+  categories(): string[] {
+    const known = new Set([...SUGGESTED_TOOL_CATEGORIES, ...this.tools.map((t) => t.category || 'General')]);
+    return [...known].sort();
+  }
+
+  toolsInCategory(c: string): Tool[] {
+    return this.tools.filter((t) => (t.category || 'General') === c);
+  }
+
+  filteredTools(): Tool[] {
+    return this.categoryFilter ? this.toolsInCategory(this.categoryFilter) : this.tools;
+  }
+
   toggleSchema(t: Tool) {
     this.schemaOpenFor = this.schemaOpenFor === t.id ? null : (t.id ?? null);
     this.copied = false;
@@ -220,7 +249,7 @@ export class ToolShedComponent implements OnInit {
   }
 
   blank(): Draft {
-    return { name: undefined, kind: 'builtin', description: '', method: 'GET', urlTemplate: '', headersStr: '' };
+    return { name: undefined, kind: 'builtin', description: '', category: 'General', method: 'GET', urlTemplate: '', headersStr: '' };
   }
 
   reset() { this.draft = this.blank(); this.error = ''; }
@@ -254,7 +283,7 @@ export class ToolShedComponent implements OnInit {
 
   save() {
     const d = this.draft;
-    const body: Partial<Tool> = { name: d.name, kind: d.kind, description: d.description || '' };
+    const body: Partial<Tool> = { name: d.name, kind: d.kind, description: d.description || '', category: d.category || 'General' };
     if (d.kind === 'http') {
       body.method = d.method || 'GET';
       body.urlTemplate = d.urlTemplate || '';

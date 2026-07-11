@@ -15,6 +15,10 @@ const toolSchema = new mongoose.Schema(
     name: { type: String, required: true, trim: true },
     kind: { type: String, enum: KINDS, default: "builtin" },
     description: { type: String, default: "" },
+    // Free-text, not an enum — categories are user-creatable (Tool Shed's form
+    // offers existing ones via a datalist but accepts any new label too), so
+    // the catalog stays organizable as it grows without a migration each time.
+    category: { type: String, default: "General", trim: true },
     // "http" kind only — a user-defined tool that calls out to a URL. The host
     // in urlTemplate must be a fixed literal (enforced in routes/tools.js and,
     // authoritatively, by cohortex.tools.make_dynamic_tool at run time) — only

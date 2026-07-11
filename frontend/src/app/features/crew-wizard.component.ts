@@ -14,6 +14,9 @@ type Step = 'pick' | 'review' | 'credentials' | 'confirm';
 
 interface WizardAgent extends CrewTemplateAgent {
   credentialId: string | null;
+  // UI-only: which tool category's drawer is expanded for this agent. Never
+  // sent to the backend — createAndGo() only reads name/role/goal/tools.
+  openCategory: string | null;
 }
 
 @Component({
@@ -110,14 +113,21 @@ interface WizardAgent extends CrewTemplateAgent {
         </div>
         <label>Goal</label>
         <textarea [(ngModel)]="a.goal"></textarea>
-        <label>Tools</label>
-        <div class="checks">
-          <label *ngFor="let tool of tools">
+        <label>Tools <span class="muted" *ngIf="a.tools.length">({{ a.tools.length }} selected)</span></label>
+        <select [(ngModel)]="a.openCategory">
+          <option [ngValue]="null">— choose a category —</option>
+          <option *ngFor="let c of toolCategories()" [ngValue]="c">{{ c }} ({{ toolsInCategory(c).length }})</option>
+        </select>
+        <div class="checks" *ngIf="a.openCategory" style="margin-top:6px">
+          <label *ngFor="let tool of toolsInCategory(a.openCategory)">
             <input type="checkbox" [checked]="a.tools.includes(tool.name)" (change)="toggleAgentTool(a, tool.name)" />
             {{ tool.name }}
           </label>
-          <span *ngIf="!tools.length" class="muted">No tools cataloged yet — add some in Tool Shed first, or skip for now.</span>
         </div>
+        <div class="chips" *ngIf="a.tools.length" style="margin-top:6px">
+          <span class="badge cyan" *ngFor="let tn of a.tools">{{ tn }}</span>
+        </div>
+        <span *ngIf="!tools.length" class="muted">No tools cataloged yet — add some in Tool Shed first, or skip for now.</span>
         <button class="danger" style="margin-top:8px" (click)="removeWizardAgent(i)" [disabled]="wizardAgents.length <= 1">Remove agent</button>
       </div>
       <button class="ghost" style="margin-top:10px" (click)="addWizardAgent()">+ Add agent</button>
@@ -261,7 +271,7 @@ export class CrewWizardComponent implements OnInit {
     this.crewName = t.name;
     this.topology = t.topology;
     this.supervisorName = null;
-    this.wizardAgents = t.agents.map((a) => ({ ...a, tools: [...a.tools], credentialId: null }));
+    this.wizardAgents = t.agents.map((a) => ({ ...a, tools: [...a.tools], credentialId: null, openCategory: null }));
     this.error = '';
     this.step = 'review';
   }
@@ -271,8 +281,16 @@ export class CrewWizardComponent implements OnInit {
     if (i >= 0) a.tools.splice(i, 1); else a.tools.push(toolName);
   }
 
+  toolCategories(): string[] {
+    return [...new Set(this.tools.map((t) => t.category || 'General'))].sort();
+  }
+
+  toolsInCategory(c: string): Tool[] {
+    return this.tools.filter((t) => (t.category || 'General') === c);
+  }
+
   addWizardAgent() {
-    this.wizardAgents.push({ name: '', role: '', goal: '', tools: [], credentialId: null });
+    this.wizardAgents.push({ name: '', role: '', goal: '', tools: [], credentialId: null, openCategory: null });
   }
   removeWizardAgent(i: number) {
     if (this.wizardAgents.length <= 1) return;

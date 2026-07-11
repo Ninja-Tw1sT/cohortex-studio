@@ -9,7 +9,7 @@ const sidecarClient = require("../services/sidecarClient");
 
 const router = express.Router();
 
-const FIELDS = ["name", "kind", "description", "method", "urlTemplate", "headers"];
+const FIELDS = ["name", "kind", "description", "category", "method", "urlTemplate", "headers"];
 const pick = (body) =>
   Object.fromEntries(FIELDS.filter((f) => body[f] !== undefined).map((f) => [f, body[f]]));
 

@@ -5,9 +5,14 @@ export type Topology = (typeof TOPOLOGIES)[number];
 // The names cohortex's ReAct loop always resolves via its global registry (see
 // cohortex/cohortex/tools/__init__.py) — a "builtin" kind Tool Shed entry must
 // use one of these.
-export const BUILTIN_TOOLS = ['calculator', 'word_count'] as const;
+export const BUILTIN_TOOLS = ['calculator', 'word_count', 'contrast_ratio', 'shannon_entropy', 'defang_iocs'] as const;
 export const TOOL_KINDS = ['builtin', 'http'] as const;
 export const HTTP_METHODS = ['GET', 'POST'] as const;
+// Suggested starting points for the Tool Shed's category field — not an enum;
+// categories are free-text and user-creatable, this just seeds the datalist.
+export const SUGGESTED_TOOL_CATEGORIES = [
+  'Utility', 'Research & OSINT', 'Security Analysis', 'Design & Accessibility',
+] as const;
 
 // A visitor's own LLM config for live runs — kept in the browser only (see
 // LlmConfigService), sent per-request, never persisted server-side.
@@ -50,6 +55,7 @@ export interface Tool {
   name: string;
   kind: (typeof TOOL_KINDS)[number];
   description: string;
+  category?: string;
   method?: (typeof HTTP_METHODS)[number] | null;
   urlTemplate?: string;
   headers?: Record<string, string>;
