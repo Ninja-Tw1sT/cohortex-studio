@@ -91,6 +91,44 @@ const AGENTS = [
 const TOOLS = [
   { name: "calculator", description: "Evaluate a basic arithmetic expression, e.g. '23 * (4 + 1)'." },
   { name: "word_count", description: "Count the words in a string." },
+  // OSINT crew's pipeline: gather (wikipedia_search, ip_geolocation) -> verify
+  // (whois_lookup, wayback_availability) -> synthesize (word_count, current_datetime).
+  // All five hit real, free, no-key-required public APIs.
+  {
+    name: "wikipedia_search",
+    kind: "http",
+    method: "GET",
+    description: "Search Wikipedia for articles matching a query, e.g. 'Ada Lovelace'.",
+    urlTemplate: "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srsearch={input}",
+  },
+  {
+    name: "ip_geolocation",
+    kind: "http",
+    method: "GET",
+    description: "Get geolocation and network info for an IP address or hostname.",
+    urlTemplate: "https://api.hackertarget.com/geoip/?q={input}",
+  },
+  {
+    name: "whois_lookup",
+    kind: "http",
+    method: "GET",
+    description: "Get RDAP (modern WHOIS) registration info for a domain, e.g. registrar and creation date — registration age is a useful signal for gauging a source's credibility.",
+    urlTemplate: "https://rdap.org/domain/{input}",
+  },
+  {
+    name: "wayback_availability",
+    kind: "http",
+    method: "GET",
+    description: "Check whether a URL has an archived snapshot in the Internet Archive's Wayback Machine, and how far back it goes.",
+    urlTemplate: "https://archive.org/wayback/available?url={input}",
+  },
+  {
+    name: "current_datetime",
+    kind: "http",
+    method: "GET",
+    description: "Get the current UTC date and time — useful for timestamping a report. No input needed.",
+    urlTemplate: "https://timeapi.io/api/time/current/zone?timeZone=UTC",
+  },
 ];
 
 const CREWS = [
@@ -159,9 +197,9 @@ const CREW_TEMPLATES = [
     description: "Gather, verify, and synthesize publicly available information into a sourced summary.",
     topology: "sequential",
     agents: [
-      { name: "osint_researcher", role: "OSINT Researcher", goal: "gather and organize publicly available information relevant to the request from the provided context", tools: [] },
-      { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: [] },
-      { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary", tools: ["word_count"] },
+      { name: "osint_researcher", role: "OSINT Researcher", goal: "gather and organize publicly available information relevant to the request from the provided context", tools: ["wikipedia_search", "ip_geolocation"] },
+      { name: "source_verifier", role: "Source Verifier", goal: "assess the credibility and recency of each piece of information and flag anything unverified", tools: ["whois_lookup", "wayback_availability"] },
+      { name: "intel_synthesizer", role: "Intelligence Synthesizer", goal: "synthesize verified findings into a clear, sourced summary", tools: ["word_count", "current_datetime"] },
     ],
   },
 ];
