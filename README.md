@@ -74,6 +74,7 @@ flowchart LR
 ```
 GET/POST/PUT/DELETE  /api/agents[/:id]
 GET/POST/PUT/DELETE  /api/crews[/:id]
+GET/POST/PUT/DELETE  /api/crew-templates[/:id]  # Crew Wizard starter/custom templates
 GET/POST/PUT/DELETE  /api/tools[/:id]     # Tool Shed catalog
 POST                 /api/tools/generate  { description, llm }  # AI-proposed http tool, not saved
 POST                 /api/runs            { crewId, task, mode: "live" | "replay" }
@@ -141,6 +142,29 @@ not provider-native tool-calling, which is exactly what makes the same tool defi
 identically across all five backends (including local models with no native tool-calling support
 at all). The Schema view exists for the opposite direction: taking a tool defined here and
 calling it from a provider's own native tools API somewhere else.
+
+## Crew Wizard
+Building a crew from scratch means knowing which agents to create, which tools each one
+needs, and which LLM credential to run it with — the **Crew Wizard** (`/wizard`) walks
+through all three instead of leaving them as separate, easy-to-miss steps:
+1. **Pick a starter** — five built-in templates (Software Dev, Security Research, Web
+   Design, Reversing, OSINT crews), each a `CrewTemplate` document (topology + agents +
+   per-agent tool list) served from MongoDB, so the catalog can grow without a frontend
+   redeploy.
+2. **Review & tune** — add/remove agents, toggle each agent's tools on or off per the
+   use case, right in the wizard before anything is created.
+3. **Assign credentials** — map each agent to a saved BYOK LLM credential (or leave it
+   for the server default).
+4. **Create & go** — creates only the agents that don't already exist (matched by name),
+   creates the crew, and hands off straight to the Run page with the crew pre-selected
+   and credential assignments carried over via router state (not the URL — they're
+   localStorage credential ids, not secrets, but there's no reason to put them in a
+   shareable link).
+
+Templates are also **customizable**: save your own as a new `CrewTemplate` (public demo
+namespace, same as the built-ins), or **Import**/**Export** one as JSON — the same
+sanitize-on-export, validate-on-save pattern used for agents and crews elsewhere in the
+app, so a template never skips normal validation just because it came from a file.
 
 ## Crew topology diagram
 Picking a crew on the Run page draws its topology live — agents as nodes in each agent's own
@@ -210,6 +234,7 @@ cd sidecar  && pytest       # FastAPI TestClient, fake Cohortex backend
 - [x] **Context truncation** — `maxHandoffChars` bounds inter-agent context in sequential crews
 - [x] **Prompt caching** — Anthropic `cache_control` for supervisor loop efficiency
 - [x] **Run memory** — cross-run learning via MongoDB-backed summaries
+- [x] **Crew Wizard** — guided template picker with per-agent tool/credential setup
 - [x] **CI** — GitHub Actions running all three test suites on push
 
 ## License
